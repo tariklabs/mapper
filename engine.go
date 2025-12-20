@@ -1,6 +1,9 @@
 package mapper
 
-import "reflect"
+import (
+	"reflect"
+	"strconv"
+)
 
 func runMapping(dst any, src any, cfg *config) error {
 	if dst == nil || src == nil {
@@ -115,6 +118,13 @@ func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPat
 
 	// Exact or assignable type.
 	if sType.AssignableTo(dType) {
+		// For slices, create a deep copy to avoid sharing underlying array.
+		if sType.Kind() == reflect.Slice {
+			if err := assignSlice(dst, src, srcType, dstType, fieldPath); err != nil {
+				return err
+			}
+			return nil
+		}
 		dst.Set(src)
 		return nil
 	}
@@ -123,6 +133,11 @@ func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPat
 	if sType.ConvertibleTo(dType) {
 		dst.Set(src.Convert(dType))
 		return nil
+	}
+
+	// Slice handling for different but compatible element types.
+	if sType.Kind() == reflect.Slice && dType.Kind() == reflect.Slice {
+		return assignSlice(dst, src, srcType, dstType, fieldPath)
 	}
 
 	// Pointer -> value.
@@ -150,6 +165,65 @@ func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPat
 		FieldPath: fieldPath,
 		Reason:    "incompatible field types: " + sType.String() + " -> " + dType.String(),
 	}
+}
+
+// assignSlice handles slice assignment with proper deep copying and type conversion.
+// It ensures that:
+// - nil slices remain nil
+// - empty slices remain empty (not nil)
+// - a new underlying array is created (modifications to source don't affect destination)
+// - element types are converted if compatible
+func assignSlice(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPath string) error {
+	// Handle nil slice: result should be nil.
+	if src.IsNil() {
+		dst.Set(reflect.Zero(dst.Type()))
+		return nil
+	}
+
+	sType := src.Type()
+	dType := dst.Type()
+	srcElemType := sType.Elem()
+	dstElemType := dType.Elem()
+
+	length := src.Len()
+
+	// Create a new slice with the same length and capacity.
+	newSlice := reflect.MakeSlice(dType, length, length)
+
+	// Check if elements are directly assignable or need conversion.
+	elementsAssignable := srcElemType.AssignableTo(dstElemType)
+	elementsConvertible := srcElemType.ConvertibleTo(dstElemType)
+
+	if !elementsAssignable && !elementsConvertible {
+		return &MappingError{
+			SrcType:   srcType.String(),
+			DstType:   dstType.String(),
+			FieldPath: fieldPath,
+			Reason:    "slice element types are incompatible: " + srcElemType.String() + " -> " + dstElemType.String(),
+		}
+	}
+
+	// Copy each element.
+	for i := 0; i < length; i++ {
+		srcElem := src.Index(i)
+		dstElem := newSlice.Index(i)
+
+		if elementsAssignable {
+			// For same types, we still need to handle nested slices/structs properly.
+			if srcElemType.Kind() == reflect.Slice {
+				if err := assignSlice(dstElem, srcElem, srcType, dstType, fieldPath+"["+strconv.Itoa(i)+"]"); err != nil {
+					return err
+				}
+			} else {
+				dstElem.Set(srcElem)
+			}
+		} else if elementsConvertible {
+			dstElem.Set(srcElem.Convert(dstElemType))
+		}
+	}
+
+	dst.Set(newSlice)
+	return nil
 }
 
 func typeOf(v any) string {
