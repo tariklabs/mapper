@@ -62,7 +62,7 @@ func TestMapconv_StringToBool(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if dst.Active != true {
+	if !dst.Active {
 		t.Errorf("expected Active = true, got %v", dst.Active)
 	}
 }
@@ -83,7 +83,7 @@ func TestMapconv_StringToBool_False(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if dst.Active != false {
+	if dst.Active {
 		t.Errorf("expected Active = false, got %v", dst.Active)
 	}
 }
@@ -190,7 +190,7 @@ func TestMapconv_AllFieldsTogether(t *testing.T) {
 	if dst.Score != 88.5 {
 		t.Errorf("expected Score = 88.5, got %f", dst.Score)
 	}
-	if dst.Active != true {
+	if !dst.Active {
 		t.Errorf("expected Active = true, got %v", dst.Active)
 	}
 	if dst.Count != 1000 {
@@ -353,17 +353,18 @@ func TestMapconv_BoolVariants(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		src := Src{Active: tc.input}
-		var dst Dst
+		t.Run(tc.input, func(t *testing.T) {
+			src := Src{Active: tc.input}
+			var dst Dst
 
-		if err := Map(&dst, src); err != nil {
-			t.Errorf("unexpected error for input %q: %v", tc.input, err)
-			continue
-		}
+			if err := Map(&dst, src); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 
-		if dst.Active != tc.expected {
-			t.Errorf("input %q: expected Active = %v, got %v", tc.input, tc.expected, dst.Active)
-		}
+			if dst.Active != tc.expected {
+				t.Errorf("expected Active = %v, got %v", tc.expected, dst.Active)
+			}
+		})
 	}
 }
 
