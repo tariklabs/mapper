@@ -94,7 +94,7 @@ func runMapping(dst any, src any, cfg *config) error {
 			continue
 		}
 
-		if err := assignValue(dstField, srcField, srcType, dstType, dstName); err != nil {
+		if err := assignValue(dstField, srcField, srcType, dstType, dstName, srcFieldMeta.ConvertTo); err != nil {
 			return err
 		}
 	}
@@ -103,7 +103,7 @@ func runMapping(dst any, src any, cfg *config) error {
 }
 
 // assignValue tries to assign src to dst, handling basic cases and pointer/value combinations.
-func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPath string) error {
+func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPath string, convertTo string) error {
 	if !dst.CanSet() {
 		return &MappingError{
 			SrcType:   srcType.String(),
@@ -115,6 +115,16 @@ func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPat
 
 	sType := src.Type()
 	dType := dst.Type()
+
+	// String conversion using mapconv tag.
+	if convertTo != "" && sType.Kind() == reflect.String {
+		converted, err := convertString(src.String(), convertTo, srcType, dstType, fieldPath)
+		if err != nil {
+			return err
+		}
+		dst.Set(converted.Convert(dType))
+		return nil
+	}
 
 	// Exact or assignable type.
 	if sType.AssignableTo(dType) {
@@ -145,14 +155,14 @@ func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPat
 		if src.IsNil() {
 			return nil // nothing to assign
 		}
-		return assignValue(dst, src.Elem(), srcType, dstType, fieldPath)
+		return assignValue(dst, src.Elem(), srcType, dstType, fieldPath, convertTo)
 	}
 
 	// Value -> pointer.
 	if sType.Kind() != reflect.Ptr && dType.Kind() == reflect.Ptr {
 		// Allocate new value for pointer.
 		newVal := reflect.New(dType.Elem())
-		if err := assignValue(newVal.Elem(), src, srcType, dstType, fieldPath); err != nil {
+		if err := assignValue(newVal.Elem(), src, srcType, dstType, fieldPath, convertTo); err != nil {
 			return err
 		}
 		dst.Set(newVal)
@@ -173,7 +183,7 @@ func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPat
 // - empty slices remain empty (not nil)
 // - a new underlying array is created (modifications to source don't affect destination)
 // - element types are converted if compatible
-func assignSlice(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPath string) error {
+func assignSlice(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, fieldPath string) error {
 	// Handle nil slice: result should be nil.
 	if src.IsNil() {
 		dst.Set(reflect.Zero(dst.Type()))
@@ -196,8 +206,8 @@ func assignSlice(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPat
 
 	if !elementsAssignable && !elementsConvertible {
 		return &MappingError{
-			SrcType:   srcType.String(),
-			DstType:   dstType.String(),
+			SrcType:   srcStructType.String(),
+			DstType:   dstStructType.String(),
 			FieldPath: fieldPath,
 			Reason:    "slice element types are incompatible: " + srcElemType.String() + " -> " + dstElemType.String(),
 		}
@@ -211,7 +221,7 @@ func assignSlice(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPat
 		if elementsAssignable {
 			// For same types, we still need to handle nested slices/structs properly.
 			if srcElemType.Kind() == reflect.Slice {
-				if err := assignSlice(dstElem, srcElem, srcType, dstType, fieldPath+"["+strconv.Itoa(i)+"]"); err != nil {
+				if err := assignSlice(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]"); err != nil {
 					return err
 				}
 			} else {
@@ -231,4 +241,119 @@ func typeOf(v any) string {
 		return "<nil>"
 	}
 	return reflect.TypeOf(v).String()
+}
+
+// convertString converts a string to the specified type.
+// Supported types: int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, bool.
+func convertString(str string, targetType string, srcStructType, dstStructType reflect.Type, fieldPath string) (reflect.Value, error) {
+	switch targetType {
+	case "int":
+		val, err := strconv.ParseInt(str, 10, 64)
+		if err != nil {
+			return reflect.Value{}, conversionError(str, targetType, err, srcStructType, dstStructType, fieldPath)
+		}
+		return reflect.ValueOf(int(val)), nil
+
+	case "int8":
+		val, err := strconv.ParseInt(str, 10, 8)
+		if err != nil {
+			return reflect.Value{}, conversionError(str, targetType, err, srcStructType, dstStructType, fieldPath)
+		}
+		return reflect.ValueOf(int8(val)), nil
+
+	case "int16":
+		val, err := strconv.ParseInt(str, 10, 16)
+		if err != nil {
+			return reflect.Value{}, conversionError(str, targetType, err, srcStructType, dstStructType, fieldPath)
+		}
+		return reflect.ValueOf(int16(val)), nil
+
+	case "int32":
+		val, err := strconv.ParseInt(str, 10, 32)
+		if err != nil {
+			return reflect.Value{}, conversionError(str, targetType, err, srcStructType, dstStructType, fieldPath)
+		}
+		return reflect.ValueOf(int32(val)), nil
+
+	case "int64":
+		val, err := strconv.ParseInt(str, 10, 64)
+		if err != nil {
+			return reflect.Value{}, conversionError(str, targetType, err, srcStructType, dstStructType, fieldPath)
+		}
+		return reflect.ValueOf(val), nil
+
+	case "uint":
+		val, err := strconv.ParseUint(str, 10, 64)
+		if err != nil {
+			return reflect.Value{}, conversionError(str, targetType, err, srcStructType, dstStructType, fieldPath)
+		}
+		return reflect.ValueOf(uint(val)), nil
+
+	case "uint8":
+		val, err := strconv.ParseUint(str, 10, 8)
+		if err != nil {
+			return reflect.Value{}, conversionError(str, targetType, err, srcStructType, dstStructType, fieldPath)
+		}
+		return reflect.ValueOf(uint8(val)), nil
+
+	case "uint16":
+		val, err := strconv.ParseUint(str, 10, 16)
+		if err != nil {
+			return reflect.Value{}, conversionError(str, targetType, err, srcStructType, dstStructType, fieldPath)
+		}
+		return reflect.ValueOf(uint16(val)), nil
+
+	case "uint32":
+		val, err := strconv.ParseUint(str, 10, 32)
+		if err != nil {
+			return reflect.Value{}, conversionError(str, targetType, err, srcStructType, dstStructType, fieldPath)
+		}
+		return reflect.ValueOf(uint32(val)), nil
+
+	case "uint64":
+		val, err := strconv.ParseUint(str, 10, 64)
+		if err != nil {
+			return reflect.Value{}, conversionError(str, targetType, err, srcStructType, dstStructType, fieldPath)
+		}
+		return reflect.ValueOf(val), nil
+
+	case "float32":
+		val, err := strconv.ParseFloat(str, 32)
+		if err != nil {
+			return reflect.Value{}, conversionError(str, targetType, err, srcStructType, dstStructType, fieldPath)
+		}
+		return reflect.ValueOf(float32(val)), nil
+
+	case "float64":
+		val, err := strconv.ParseFloat(str, 64)
+		if err != nil {
+			return reflect.Value{}, conversionError(str, targetType, err, srcStructType, dstStructType, fieldPath)
+		}
+		return reflect.ValueOf(val), nil
+
+	case "bool":
+		val, err := strconv.ParseBool(str)
+		if err != nil {
+			return reflect.Value{}, conversionError(str, targetType, err, srcStructType, dstStructType, fieldPath)
+		}
+		return reflect.ValueOf(val), nil
+
+	default:
+		return reflect.Value{}, &MappingError{
+			SrcType:   srcStructType.String(),
+			DstType:   dstStructType.String(),
+			FieldPath: fieldPath,
+			Reason:    "unsupported mapconv target type: " + targetType,
+		}
+	}
+}
+
+// conversionError creates a MappingError for string conversion failures.
+func conversionError(str, targetType string, parseErr error, srcStructType, dstStructType reflect.Type, fieldPath string) error {
+	return &MappingError{
+		SrcType:   srcStructType.String(),
+		DstType:   dstStructType.String(),
+		FieldPath: fieldPath,
+		Reason:    "cannot convert \"" + str + "\" to " + targetType + ": " + parseErr.Error(),
+	}
 }
