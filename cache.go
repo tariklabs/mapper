@@ -6,10 +6,11 @@ import (
 )
 
 type fieldMeta struct {
-	Name  string
-	Index []int
-	Type  reflect.Type
-	Tag   string
+	Name      string
+	Index     []int
+	Type      reflect.Type
+	Tag       string
+	ConvertTo string // Target type for string conversion (e.g., "int", "float64", "bool")
 }
 
 type structMeta struct {
@@ -59,6 +60,10 @@ func getStructMeta(t reflect.Type, tagName string) (*structMeta, error) {
 			Name:  sf.Name,
 			Index: sf.Index,
 			Type:  sf.Type,
+		}
+
+		if convTag := sf.Tag.Get("mapconv"); convTag != "" {
+			meta.ConvertTo = convTag
 		}
 
 		m.FieldsByName[sf.Name] = meta
