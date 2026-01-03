@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -547,7 +548,7 @@ func TestMap_ErrorMessage_IncompatibleKeys(t *testing.T) {
 		t.Fatalf("expected *MappingError, got %T", err)
 	}
 
-	if !contains(mappingErr.Reason, "key") {
+	if !strings.Contains(mappingErr.Reason, "key") {
 		t.Errorf("error message should mention 'key', got: %q", mappingErr.Reason)
 	}
 }
@@ -574,7 +575,7 @@ func TestMap_ErrorMessage_IncompatibleValues(t *testing.T) {
 		t.Fatalf("expected *MappingError, got %T", err)
 	}
 
-	if !contains(mappingErr.Reason, "value") {
+	if !strings.Contains(mappingErr.Reason, "value") {
 		t.Errorf("error message should mention 'value', got: %q", mappingErr.Reason)
 	}
 }
@@ -613,19 +614,6 @@ func TestMap_DifferentType_EmptyMap(t *testing.T) {
 	if len(dst.Values) != 0 {
 		t.Errorf("expected empty map, got %d elements", len(dst.Values))
 	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
-}
-
-func containsHelper(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
 
 // Error cases
