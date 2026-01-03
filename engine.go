@@ -115,7 +115,6 @@ func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPat
 	sType := src.Type()
 	dType := dst.Type()
 
-	// String conversion using mapconv tag.
 	if convertTo != "" && sType.Kind() == reflect.String {
 		converted, err := convertString(src.String(), convertTo, srcType, dstType, fieldPath)
 		if err != nil {
@@ -125,11 +124,15 @@ func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPat
 		return nil
 	}
 
-	// Exact or assignable type.
 	if sType.AssignableTo(dType) {
-		// For slices, create a deep copy to avoid sharing underlying array.
 		if sType.Kind() == reflect.Slice {
 			if err := assignSlice(dst, src, srcType, dstType, fieldPath); err != nil {
+				return err
+			}
+			return nil
+		}
+		if sType.Kind() == reflect.Map {
+			if err := assignMap(dst, src, srcType, dstType, fieldPath); err != nil {
 				return err
 			}
 			return nil
@@ -138,28 +141,27 @@ func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPat
 		return nil
 	}
 
-	// Convertible types.
 	if sType.ConvertibleTo(dType) {
 		dst.Set(src.Convert(dType))
 		return nil
 	}
 
-	// Slice handling for different but compatible element types.
 	if sType.Kind() == reflect.Slice && dType.Kind() == reflect.Slice {
 		return assignSlice(dst, src, srcType, dstType, fieldPath)
 	}
 
-	// Pointer -> value.
+	if sType.Kind() == reflect.Map && dType.Kind() == reflect.Map {
+		return assignMap(dst, src, srcType, dstType, fieldPath)
+	}
+
 	if sType.Kind() == reflect.Ptr && dType.Kind() != reflect.Ptr {
 		if src.IsNil() {
-			return nil // nothing to assign
+			return nil
 		}
 		return assignValue(dst, src.Elem(), srcType, dstType, fieldPath, convertTo)
 	}
 
-	// Value -> pointer.
 	if sType.Kind() != reflect.Ptr && dType.Kind() == reflect.Ptr {
-		// Allocate new value for pointer.
 		newVal := reflect.New(dType.Elem())
 		if err := assignValue(newVal.Elem(), src, srcType, dstType, fieldPath, convertTo); err != nil {
 			return err
