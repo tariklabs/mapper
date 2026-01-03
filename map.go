@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"fmt"
 	"reflect"
 )
 
@@ -64,14 +65,15 @@ func assignMap(dst, src reflect.Value, srcStructType, dstStructType reflect.Type
 		}
 
 		var dstVal reflect.Value
+		keyStr := fmt.Sprint(srcKey.Interface())
 		if valuesAreNestedMaps {
 			dstVal = reflect.New(dstValType).Elem()
-			if err := assignMap(dstVal, srcVal, srcStructType, dstStructType, fieldPath+"[key]"); err != nil {
+			if err := assignMap(dstVal, srcVal, srcStructType, dstStructType, fieldPath+"["+keyStr+"]"); err != nil {
 				return err
 			}
 		} else if valuesAreNestedSlices {
 			dstVal = reflect.New(dstValType).Elem()
-			if err := assignSlice(dstVal, srcVal, srcStructType, dstStructType, fieldPath+"[key]"); err != nil {
+			if err := assignSlice(dstVal, srcVal, srcStructType, dstStructType, fieldPath+"["+keyStr+"]"); err != nil {
 				return err
 			}
 		} else if srcValType.Kind() == reflect.Ptr {
