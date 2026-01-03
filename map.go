@@ -74,6 +74,14 @@ func assignMap(dst, src reflect.Value, srcStructType, dstStructType reflect.Type
 			if err := assignSlice(dstVal, srcVal, srcStructType, dstStructType, fieldPath+"[key]"); err != nil {
 				return err
 			}
+		} else if srcValType.Kind() == reflect.Ptr {
+			if srcVal.IsNil() {
+				dstVal = reflect.Zero(dstValType)
+			} else {
+				newPtr := reflect.New(dstValType.Elem())
+				newPtr.Elem().Set(srcVal.Elem())
+				dstVal = newPtr
+			}
 		} else if valuesAssignable {
 			dstVal = srcVal
 		} else {

@@ -345,6 +345,69 @@ func TestMap_WithSliceValues_DeepCopy(t *testing.T) {
 	}
 }
 
+// TestMap_WithPointerValues tests that pointer values are deep copied.
+func TestMap_WithPointerValues(t *testing.T) {
+	type Value struct {
+		Name string
+	}
+	type Src struct {
+		Data map[string]*Value
+	}
+	type Dst struct {
+		Data map[string]*Value
+	}
+
+	original := &Value{Name: "original"}
+	src := Src{
+		Data: map[string]*Value{"key": original},
+	}
+	var dst Dst
+
+	if err := Map(&dst, src); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if dst.Data["key"] == nil {
+		t.Fatal("expected pointer value to be copied")
+	}
+
+	if dst.Data["key"].Name != "original" {
+		t.Errorf("expected Name = 'original', got %q", dst.Data["key"].Name)
+	}
+
+	src.Data["key"].Name = "modified"
+
+	if dst.Data["key"].Name != "original" {
+		t.Errorf("pointer modification affected destination: got %q (expected 'original')", dst.Data["key"].Name)
+	}
+}
+
+// TestMap_WithPointerValues_Nil tests nil pointer values in maps.
+func TestMap_WithPointerValues_Nil(t *testing.T) {
+	type Value struct {
+		Name string
+	}
+	type Src struct {
+		Data map[string]*Value
+	}
+	type Dst struct {
+		Data map[string]*Value
+	}
+
+	src := Src{
+		Data: map[string]*Value{"key": nil},
+	}
+	var dst Dst
+
+	if err := Map(&dst, src); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if dst.Data["key"] != nil {
+		t.Errorf("expected nil pointer, got %v", dst.Data["key"])
+	}
+}
+
 // Additional same-type tests
 type SourceWithIntKeyStringValue struct {
 	Data map[int]string
