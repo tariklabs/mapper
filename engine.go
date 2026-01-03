@@ -125,11 +125,17 @@ func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPat
 		return nil
 	}
 
-	// Exact or assignable type.
 	if sType.AssignableTo(dType) {
-		// For slices, create a deep copy to avoid sharing underlying array.
+		// Create a deep copy 
 		if sType.Kind() == reflect.Slice {
 			if err := assignSlice(dst, src, srcType, dstType, fieldPath); err != nil {
+				return err
+			}
+			return nil
+		}
+		// Create a deep copy 
+		if sType.Kind() == reflect.Map {
+			if err := assignMap(dst, src, srcType, dstType, fieldPath); err != nil {
 				return err
 			}
 			return nil
@@ -149,10 +155,15 @@ func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPat
 		return assignSlice(dst, src, srcType, dstType, fieldPath)
 	}
 
+	// Map handling for different but compatible key/value types.
+	if sType.Kind() == reflect.Map && dType.Kind() == reflect.Map {
+		return assignMap(dst, src, srcType, dstType, fieldPath)
+	}
+
 	// Pointer -> value.
 	if sType.Kind() == reflect.Ptr && dType.Kind() != reflect.Ptr {
 		if src.IsNil() {
-			return nil // nothing to assign
+			return nil 
 		}
 		return assignValue(dst, src.Elem(), srcType, dstType, fieldPath, convertTo)
 	}
