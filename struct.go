@@ -94,7 +94,7 @@ func assignNestedValue(dst, src reflect.Value, srcStructType, dstStructType refl
 	}
 
 	if srcKind == reflect.Slice && dstKind == reflect.Slice {
-		return assignSliceWithStructs(dst, src, srcStructType, dstStructType, fieldPath, tagName)
+		return assignSlice(dst, src, srcStructType, dstStructType, fieldPath, tagName)
 	}
 
 	if srcKind == reflect.Map && dstKind == reflect.Map {

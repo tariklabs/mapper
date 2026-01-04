@@ -11,13 +11,8 @@ import (
 // - empty slices remain empty (not nil)
 // - a new underlying array is created (modifications to source don't affect destination)
 // - element types are converted if compatible
-func assignSlice(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, fieldPath string) error {
-	return assignSliceWithStructs(dst, src, srcStructType, dstStructType, fieldPath, "")
-}
-
-// assignSliceWithStructs handles slice assignment with support for nested structs.
-// It extends assignSlice to properly map struct elements within slices.
-func assignSliceWithStructs(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, fieldPath, tagName string) error {
+// - nested structs within slices are properly mapped using the provided tagName
+func assignSlice(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, fieldPath, tagName string) error {
 	if src.IsNil() {
 		dst.Set(reflect.Zero(dst.Type()))
 		return nil
@@ -69,7 +64,7 @@ func assignSliceWithStructs(dst, src reflect.Value, srcStructType, dstStructType
 		if elementsAreStructs {
 			err = assignStruct(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]", tagName)
 		} else if elementsAreSlices {
-			err = assignSliceWithStructs(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]", tagName)
+			err = assignSlice(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]", tagName)
 		} else if elementsAreMaps {
 			err = assignMapWithStructs(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]", tagName)
 		} else if elementsArePtrs {

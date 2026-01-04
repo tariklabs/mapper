@@ -132,7 +132,7 @@ func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPat
 	}
 
 	if srcKind == reflect.Slice && dstKind == reflect.Slice {
-		return assignSliceWithStructs(dst, src, srcType, dstType, fieldPath, tagName)
+		return assignSlice(dst, src, srcType, dstType, fieldPath, tagName)
 	}
 
 	if srcKind == reflect.Map && dstKind == reflect.Map {

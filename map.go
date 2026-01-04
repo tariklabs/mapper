@@ -96,7 +96,7 @@ func assignMapWithStructs(dst, src reflect.Value, srcStructType, dstStructType r
 		} else if valuesAreNestedSlices {
 			dstVal = reflect.New(dstValType).Elem()
 			valPath := fieldPath + "[" + fmt.Sprint(srcKey.Interface()) + "]"
-			if err := assignSliceWithStructs(dstVal, srcVal, srcStructType, dstStructType, valPath, tagName); err != nil {
+			if err := assignSlice(dstVal, srcVal, srcStructType, dstStructType, valPath, tagName); err != nil {
 				return err
 			}
 		} else if valuesArePtrs {
