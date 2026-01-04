@@ -13,11 +13,6 @@ func assignStruct(dst, src reflect.Value, srcStructType, dstStructType reflect.T
 	srcType := src.Type()
 	dstType := dst.Type()
 
-	if srcType == dstType && !hasCompositeFields(srcType) {
-		dst.Set(src)
-		return nil
-	}
-
 	srcMeta, err := getStructMeta(srcType, tagName)
 	if err != nil {
 		return &MappingError{
@@ -26,6 +21,12 @@ func assignStruct(dst, src reflect.Value, srcStructType, dstStructType reflect.T
 			FieldPath: fieldPath,
 			Reason:    "failed to get source struct metadata: " + err.Error(),
 		}
+	}
+
+	// Fast path: identical struct types with no composite fields can be copied directly
+	if srcType == dstType && !srcMeta.HasComposite {
+		dst.Set(src)
+		return nil
 	}
 
 	dstMeta, err := getStructMeta(dstType, tagName)
@@ -146,19 +147,4 @@ func assignNestedValue(dst, src reflect.Value, srcStructType, dstStructType refl
 		FieldPath: fieldPath,
 		Reason:    "incompatible field types: " + sType.String() + " -> " + dType.String(),
 	}
-}
-
-// hasCompositeFields checks if a struct type has any fields that require deep copying.
-func hasCompositeFields(t reflect.Type) bool {
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		if !field.IsExported() {
-			continue
-		}
-		switch field.Type.Kind() {
-		case reflect.Slice, reflect.Map, reflect.Ptr, reflect.Struct:
-			return true
-		}
-	}
-	return false
 }
