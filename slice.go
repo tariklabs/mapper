@@ -12,6 +12,12 @@ import (
 // - a new underlying array is created (modifications to source don't affect destination)
 // - element types are converted if compatible
 func assignSlice(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, fieldPath string) error {
+	return assignSliceWithStructs(dst, src, srcStructType, dstStructType, fieldPath, "")
+}
+
+// assignSliceWithStructs handles slice assignment with support for nested structs.
+// It extends assignSlice to properly map struct elements within slices.
+func assignSliceWithStructs(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, fieldPath, tagName string) error {
 	if src.IsNil() {
 		dst.Set(reflect.Zero(dst.Type()))
 		return nil
@@ -26,10 +32,17 @@ func assignSlice(dst, src reflect.Value, srcStructType, dstStructType reflect.Ty
 
 	newSlice := reflect.MakeSlice(dType, length, length)
 
+	srcElemKind := srcElemType.Kind()
+	dstElemKind := dstElemType.Kind()
+
+	elementsAreStructs := srcElemKind == reflect.Struct && dstElemKind == reflect.Struct
+	elementsAreSlices := srcElemKind == reflect.Slice && dstElemKind == reflect.Slice
+	elementsAreMaps := srcElemKind == reflect.Map && dstElemKind == reflect.Map
+	elementsArePtrs := srcElemKind == reflect.Ptr && dstElemKind == reflect.Ptr
 	elementsAssignable := srcElemType.AssignableTo(dstElemType)
 	elementsConvertible := srcElemType.ConvertibleTo(dstElemType)
 
-	if !elementsAssignable && !elementsConvertible {
+	if !elementsAssignable && !elementsConvertible && !elementsAreStructs && !elementsAreSlices && !elementsAreMaps && !elementsArePtrs {
 		return &MappingError{
 			SrcType:   srcStructType.String(),
 			DstType:   dstStructType.String(),
@@ -41,20 +54,67 @@ func assignSlice(dst, src reflect.Value, srcStructType, dstStructType reflect.Ty
 	for i := 0; i < length; i++ {
 		srcElem := src.Index(i)
 		dstElem := newSlice.Index(i)
+		elemPath := fieldPath + "[" + strconv.Itoa(i) + "]"
 
-		if elementsAssignable {
-			if srcElemType.Kind() == reflect.Slice {
-				if err := assignSlice(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]"); err != nil {
-					return err
-				}
-			} else {
-				dstElem.Set(srcElem)
+		if elementsAreStructs {
+			if err := assignStruct(dstElem, srcElem, srcStructType, dstStructType, elemPath, tagName); err != nil {
+				return err
 			}
+		} else if elementsAreSlices {
+			if err := assignSliceWithStructs(dstElem, srcElem, srcStructType, dstStructType, elemPath, tagName); err != nil {
+				return err
+			}
+		} else if elementsAreMaps {
+			if err := assignMapWithStructs(dstElem, srcElem, srcStructType, dstStructType, elemPath, tagName); err != nil {
+				return err
+			}
+		} else if elementsArePtrs {
+			if err := assignPointerElement(dstElem, srcElem, srcStructType, dstStructType, elemPath, tagName); err != nil {
+				return err
+			}
+		} else if elementsAssignable {
+			dstElem.Set(srcElem)
 		} else if elementsConvertible {
 			dstElem.Set(srcElem.Convert(dstElemType))
 		}
 	}
 
 	dst.Set(newSlice)
+	return nil
+}
+
+// assignPointerElement handles pointer elements within slices and maps.
+func assignPointerElement(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, fieldPath, tagName string) error {
+	if src.IsNil() {
+		dst.Set(reflect.Zero(dst.Type()))
+		return nil
+	}
+
+	srcElem := src.Elem()
+	dstElemType := dst.Type().Elem()
+
+	newPtr := reflect.New(dstElemType)
+
+	srcElemKind := srcElem.Kind()
+	dstElemKind := dstElemType.Kind()
+
+	if srcElemKind == reflect.Struct && dstElemKind == reflect.Struct {
+		if err := assignStruct(newPtr.Elem(), srcElem, srcStructType, dstStructType, fieldPath, tagName); err != nil {
+			return err
+		}
+	} else if srcElem.Type().AssignableTo(dstElemType) {
+		newPtr.Elem().Set(srcElem)
+	} else if srcElem.Type().ConvertibleTo(dstElemType) {
+		newPtr.Elem().Set(srcElem.Convert(dstElemType))
+	} else {
+		return &MappingError{
+			SrcType:   srcStructType.String(),
+			DstType:   dstStructType.String(),
+			FieldPath: fieldPath,
+			Reason:    "incompatible pointer element types: " + srcElem.Type().String() + " -> " + dstElemType.String(),
+		}
+	}
+
+	dst.Set(newPtr)
 	return nil
 }

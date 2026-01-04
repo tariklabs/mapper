@@ -12,6 +12,12 @@ import (
 // - a new underlying map is created (modifications to source don't affect destination)
 // - key and value types are converted if compatible
 func assignMap(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, fieldPath string) error {
+	return assignMapWithStructs(dst, src, srcStructType, dstStructType, fieldPath, "")
+}
+
+// assignMapWithStructs handles map assignment with support for nested structs.
+// It extends assignMap to properly map struct values within maps.
+func assignMapWithStructs(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, fieldPath, tagName string) error {
 	if src.IsNil() {
 		dst.Set(reflect.Zero(dst.Type()))
 		return nil
@@ -36,12 +42,17 @@ func assignMap(dst, src reflect.Value, srcStructType, dstStructType reflect.Type
 		}
 	}
 
+	srcValKind := srcValType.Kind()
+	dstValKind := dstValType.Kind()
+
+	valuesAreStructs := srcValKind == reflect.Struct && dstValKind == reflect.Struct
+	valuesAreNestedMaps := srcValKind == reflect.Map && dstValKind == reflect.Map
+	valuesAreNestedSlices := srcValKind == reflect.Slice && dstValKind == reflect.Slice
+	valuesArePtrs := srcValKind == reflect.Ptr && dstValKind == reflect.Ptr
 	valuesAssignable := srcValType.AssignableTo(dstValType)
 	valuesConvertible := srcValType.ConvertibleTo(dstValType)
-	valuesAreNestedMaps := srcValType.Kind() == reflect.Map && dstValType.Kind() == reflect.Map
-	valuesAreNestedSlices := srcValType.Kind() == reflect.Slice && dstValType.Kind() == reflect.Slice
 
-	if !valuesAssignable && !valuesConvertible && !valuesAreNestedMaps && !valuesAreNestedSlices {
+	if !valuesAssignable && !valuesConvertible && !valuesAreStructs && !valuesAreNestedMaps && !valuesAreNestedSlices && !valuesArePtrs {
 		return &MappingError{
 			SrcType:   srcStructType.String(),
 			DstType:   dstStructType.String(),
@@ -66,23 +77,27 @@ func assignMap(dst, src reflect.Value, srcStructType, dstStructType reflect.Type
 
 		var dstVal reflect.Value
 		keyStr := fmt.Sprint(srcKey.Interface())
-		if valuesAreNestedMaps {
+		valPath := fieldPath + "[" + keyStr + "]"
+
+		if valuesAreStructs {
 			dstVal = reflect.New(dstValType).Elem()
-			if err := assignMap(dstVal, srcVal, srcStructType, dstStructType, fieldPath+"["+keyStr+"]"); err != nil {
+			if err := assignStruct(dstVal, srcVal, srcStructType, dstStructType, valPath, tagName); err != nil {
+				return err
+			}
+		} else if valuesAreNestedMaps {
+			dstVal = reflect.New(dstValType).Elem()
+			if err := assignMapWithStructs(dstVal, srcVal, srcStructType, dstStructType, valPath, tagName); err != nil {
 				return err
 			}
 		} else if valuesAreNestedSlices {
 			dstVal = reflect.New(dstValType).Elem()
-			if err := assignSlice(dstVal, srcVal, srcStructType, dstStructType, fieldPath+"["+keyStr+"]"); err != nil {
+			if err := assignSliceWithStructs(dstVal, srcVal, srcStructType, dstStructType, valPath, tagName); err != nil {
 				return err
 			}
-		} else if srcValType.Kind() == reflect.Ptr {
-			if srcVal.IsNil() {
-				dstVal = reflect.Zero(dstValType)
-			} else {
-				newPtr := reflect.New(dstValType.Elem())
-				newPtr.Elem().Set(srcVal.Elem())
-				dstVal = newPtr
+		} else if valuesArePtrs {
+			dstVal = reflect.New(dstValType).Elem()
+			if err := assignPointerElement(dstVal, srcVal, srcStructType, dstStructType, valPath, tagName); err != nil {
+				return err
 			}
 		} else if valuesAssignable {
 			dstVal = srcVal
