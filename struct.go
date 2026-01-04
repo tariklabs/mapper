@@ -23,7 +23,6 @@ func assignStruct(dst, src reflect.Value, srcStructType, dstStructType reflect.T
 		}
 	}
 
-	// Fast path: identical struct types with no composite fields can be copied directly
 	if srcType == dstType && !srcMeta.HasComposite {
 		dst.Set(src)
 		return nil
