@@ -42,7 +42,6 @@ func getStructMeta(t reflect.Type, tagName string) (*structMeta, error) {
 		}
 	}
 
-	// Fast path: read lock to check cache
 	typeCacheLock.RLock()
 	tc := typeCache[t]
 	typeCacheLock.RUnlock()
@@ -66,9 +65,9 @@ func getStructMeta(t reflect.Type, tagName string) (*structMeta, error) {
 		tc = &tagCache{entries: make(map[string]*structMeta, 2)}
 		typeCache[t] = tc
 	}
+	tc.Lock()
 	typeCacheLock.Unlock()
 
-	tc.Lock()
 	// Double-check in case another goroutine computed it
 	if existing := tc.entries[tagName]; existing != nil {
 		tc.Unlock()
