@@ -12,7 +12,16 @@ import (
 // - a new underlying map is created (modifications to source don't affect destination)
 // - key and value types are converted if compatible
 // - nested structs within maps are properly mapped using the provided tagName
-func assignMap(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, fieldPath, tagName string) error {
+func assignMap(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, fieldPath, tagName string, depth int) error {
+	if depth <= 0 {
+		return &MappingError{
+			SrcType:   srcStructType.String(),
+			DstType:   dstStructType.String(),
+			FieldPath: fieldPath,
+			Reason:    "maximum nesting depth exceeded (possible circular reference)",
+		}
+	}
+
 	if src.IsNil() {
 		dst.Set(reflect.Zero(dst.Type()))
 		return nil
@@ -79,25 +88,25 @@ func assignMap(dst, src reflect.Value, srcStructType, dstStructType reflect.Type
 		} else if valuesAreStructs {
 			dstVal = reflect.New(dstValType).Elem()
 			valPath := fieldPath + "[" + fmt.Sprint(srcKey.Interface()) + "]"
-			if err := assignStruct(dstVal, srcVal, srcStructType, dstStructType, valPath, tagName); err != nil {
+			if err := assignStruct(dstVal, srcVal, srcStructType, dstStructType, valPath, tagName, depth-1); err != nil {
 				return err
 			}
 		} else if valuesAreNestedMaps {
 			dstVal = reflect.New(dstValType).Elem()
 			valPath := fieldPath + "[" + fmt.Sprint(srcKey.Interface()) + "]"
-			if err := assignMap(dstVal, srcVal, srcStructType, dstStructType, valPath, tagName); err != nil {
+			if err := assignMap(dstVal, srcVal, srcStructType, dstStructType, valPath, tagName, depth-1); err != nil {
 				return err
 			}
 		} else if valuesAreNestedSlices {
 			dstVal = reflect.New(dstValType).Elem()
 			valPath := fieldPath + "[" + fmt.Sprint(srcKey.Interface()) + "]"
-			if err := assignSlice(dstVal, srcVal, srcStructType, dstStructType, valPath, tagName); err != nil {
+			if err := assignSlice(dstVal, srcVal, srcStructType, dstStructType, valPath, tagName, depth-1); err != nil {
 				return err
 			}
 		} else if valuesArePtrs {
 			dstVal = reflect.New(dstValType).Elem()
 			valPath := fieldPath + "[" + fmt.Sprint(srcKey.Interface()) + "]"
-			if err := assignPointerElement(dstVal, srcVal, srcStructType, dstStructType, valPath, tagName); err != nil {
+			if err := assignPointerElement(dstVal, srcVal, srcStructType, dstStructType, valPath, tagName, depth-1); err != nil {
 				return err
 			}
 		} else if valuesConvertible {
