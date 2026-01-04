@@ -74,6 +74,15 @@ func assignStruct(dst, src reflect.Value, srcStructType, dstStructType reflect.T
 // assignNestedValue handles value assignment within nested contexts (structs, slices, maps).
 // It supports nested structs, slices, maps, pointers, and type conversions.
 func assignNestedValue(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, fieldPath, tagName, convertTo string, depth int) error {
+	if depth <= 0 {
+		return &MappingError{
+			SrcType:   srcStructType.String(),
+			DstType:   dstStructType.String(),
+			FieldPath: fieldPath,
+			Reason:    "maximum nesting depth exceeded (possible circular reference)",
+		}
+	}
+
 	if !dst.CanSet() {
 		return &MappingError{
 			SrcType:   srcStructType.String(),

@@ -1181,3 +1181,67 @@ func TestMaxDepthLimit_MixedStructures(t *testing.T) {
 		t.Errorf("expected Maps[outer][inner].Value = 3, got %d", dst.Maps["outer"]["inner"].Value)
 	}
 }
+
+// Test that WithMaxDepth(0) uses the default depth limit
+func TestMaxDepthLimit_ZeroUsesDefault(t *testing.T) {
+	type Level struct {
+		Value int
+		Next  *Level
+	}
+
+	// Build a chain of 10 levels - should work with default depth of 64
+	src := Level{Value: 1}
+	current := &src
+	for i := 2; i <= 10; i++ {
+		current.Next = &Level{Value: i}
+		current = current.Next
+	}
+
+	var dst Level
+
+	// WithMaxDepth(0) should use default (64), allowing 10 levels
+	err := MapWithOptions(&dst, src, WithMaxDepth(0))
+	if err != nil {
+		t.Fatalf("unexpected error with WithMaxDepth(0): %v", err)
+	}
+
+	// Verify the chain was copied correctly
+	d := &dst
+	for i := 1; i <= 10; i++ {
+		if d == nil {
+			t.Fatalf("expected level %d, got nil", i)
+		}
+		if d.Value != i {
+			t.Errorf("expected Value = %d, got %d", i, d.Value)
+		}
+		d = d.Next
+	}
+}
+
+// Test that WithMaxDepth with negative value uses the default depth limit
+func TestMaxDepthLimit_NegativeUsesDefault(t *testing.T) {
+	type Level struct {
+		Value int
+		Next  *Level
+	}
+
+	// Build a chain of 10 levels
+	src := Level{Value: 1}
+	current := &src
+	for i := 2; i <= 10; i++ {
+		current.Next = &Level{Value: i}
+		current = current.Next
+	}
+
+	var dst Level
+
+	// WithMaxDepth(-5) should use default (64), allowing 10 levels
+	err := MapWithOptions(&dst, src, WithMaxDepth(-5))
+	if err != nil {
+		t.Fatalf("unexpected error with WithMaxDepth(-5): %v", err)
+	}
+
+	if dst.Value != 1 {
+		t.Errorf("expected Value = 1, got %d", dst.Value)
+	}
+}

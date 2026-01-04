@@ -48,7 +48,8 @@ func WithStrictMode() Option {
 
 // WithMaxDepth sets the maximum nesting depth for struct mapping.
 // This prevents stack overflow from circular references.
-// Default is 64. Set to 0 to use the default.
+// Default is 64. Values less than or equal to 0 are ignored and
+// the default depth limit will be used.
 func WithMaxDepth(depth int) Option {
 	return func(c *config) {
 		if depth > 0 {
