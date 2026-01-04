@@ -10,21 +10,27 @@ type fieldMeta struct {
 	Index     []int
 	Type      reflect.Type
 	Tag       string
-	ConvertTo string // Target type for string conversion (e.g., "int", "float64", "bool")
+	ConvertTo string
 }
 
 type structMeta struct {
 	Type         reflect.Type
-	FieldsByName map[string]fieldMeta
-	FieldsByTag  map[string]fieldMeta
+	FieldsByName map[string]*fieldMeta
+	FieldsByTag  map[string]*fieldMeta
+	HasComposite bool
 }
 
-type metaCacheKey struct {
-	Type    reflect.Type
-	TagName string
-}
+// Two-level cache: first by reflect.Type (most common), then by tagName
+// This optimizes the common case where tagName is constant across an application
+var (
+	typeCache     = make(map[reflect.Type]*tagCache)
+	typeCacheLock sync.RWMutex
+)
 
-var metaCache sync.Map // map[metaCacheKey]*structMeta
+type tagCache struct {
+	sync.RWMutex
+	entries map[string]*structMeta
+}
 
 func getStructMeta(t reflect.Type, tagName string) (*structMeta, error) {
 	if t.Kind() != reflect.Struct {
@@ -36,27 +42,67 @@ func getStructMeta(t reflect.Type, tagName string) (*structMeta, error) {
 		}
 	}
 
-	key := metaCacheKey{Type: t, TagName: tagName}
-	if v, ok := metaCache.Load(key); ok {
-		return v.(*structMeta), nil
+	typeCacheLock.RLock()
+	tc := typeCache[t]
+	typeCacheLock.RUnlock()
+
+	if tc != nil {
+		tc.RLock()
+		if m := tc.entries[tagName]; m != nil {
+			tc.RUnlock()
+			return m, nil
+		}
+		tc.RUnlock()
 	}
+
+	// Slow path: compute metadata
+	m := buildStructMeta(t, tagName)
+
+	// Store in cache
+	typeCacheLock.Lock()
+	tc = typeCache[t]
+	if tc == nil {
+		tc = &tagCache{entries: make(map[string]*structMeta, 2)}
+		typeCache[t] = tc
+	}
+	tc.Lock()
+	typeCacheLock.Unlock()
+
+	// Double-check in case another goroutine computed it
+	if existing := tc.entries[tagName]; existing != nil {
+		tc.Unlock()
+		return existing, nil
+	}
+	tc.entries[tagName] = m
+	tc.Unlock()
+
+	return m, nil
+}
+
+func buildStructMeta(t reflect.Type, tagName string) *structMeta {
+	numFields := t.NumField()
 
 	m := &structMeta{
 		Type:         t,
-		FieldsByName: make(map[string]fieldMeta),
-		FieldsByTag:  make(map[string]fieldMeta),
+		FieldsByName: make(map[string]*fieldMeta, numFields),
+		FieldsByTag:  make(map[string]*fieldMeta, numFields),
+		HasComposite: false,
 	}
 
-	numFields := t.NumField()
 	for i := 0; i < numFields; i++ {
 		sf := t.Field(i)
 
-		// Skip unexported fields.
 		if !sf.IsExported() {
 			continue
 		}
 
-		meta := fieldMeta{
+		// Check for composite types that need deep copy
+		switch sf.Type.Kind() {
+		case reflect.Slice, reflect.Map, reflect.Ptr, reflect.Struct:
+			m.HasComposite = true
+		}
+
+		meta := &fieldMeta{
 			Name:  sf.Name,
 			Index: sf.Index,
 			Type:  sf.Type,
@@ -76,6 +122,5 @@ func getStructMeta(t reflect.Type, tagName string) (*structMeta, error) {
 		}
 	}
 
-	metaCache.Store(key, m)
-	return m, nil
+	return m
 }

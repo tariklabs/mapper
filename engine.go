@@ -93,7 +93,7 @@ func runMapping(dst any, src any, cfg *config) error {
 			continue
 		}
 
-		if err := assignValue(dstField, srcField, srcType, dstType, dstName, srcFieldMeta.ConvertTo); err != nil {
+		if err := assignValue(dstField, srcField, srcType, dstType, dstName, srcFieldMeta.ConvertTo, cfg.tagName); err != nil {
 			return err
 		}
 	}
@@ -102,7 +102,7 @@ func runMapping(dst any, src any, cfg *config) error {
 }
 
 // assignValue tries to assign src to dst, handling basic cases and pointer/value combinations.
-func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPath string, convertTo string) error {
+func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPath string, convertTo string, tagName string) error {
 	if !dst.CanSet() {
 		return &MappingError{
 			SrcType:   srcType.String(),
@@ -124,49 +124,71 @@ func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPat
 		return nil
 	}
 
+	srcKind := sType.Kind()
+	dstKind := dType.Kind()
+
+	if srcKind == reflect.Struct && dstKind == reflect.Struct {
+		return assignStruct(dst, src, srcType, dstType, fieldPath, tagName)
+	}
+
+	if srcKind == reflect.Slice && dstKind == reflect.Slice {
+		return assignSlice(dst, src, srcType, dstType, fieldPath, tagName)
+	}
+
+	if srcKind == reflect.Map && dstKind == reflect.Map {
+		return assignMap(dst, src, srcType, dstType, fieldPath, tagName)
+	}
+
+	if srcKind == reflect.Ptr && dstKind == reflect.Ptr {
+		if src.IsNil() {
+			dst.Set(reflect.Zero(dType))
+			return nil
+		}
+
+		srcElemType := sType.Elem()
+		dstElemType := dType.Elem()
+
+		if srcElemType == dstElemType {
+			elemKind := srcElemType.Kind()
+			if elemKind != reflect.Struct && elemKind != reflect.Slice && elemKind != reflect.Map && elemKind != reflect.Ptr {
+				newPtr := reflect.New(dstElemType)
+				newPtr.Elem().Set(src.Elem())
+				dst.Set(newPtr)
+				return nil
+			}
+		}
+
+		newPtr := reflect.New(dstElemType)
+		if err := assignValue(newPtr.Elem(), src.Elem(), srcType, dstType, fieldPath, convertTo, tagName); err != nil {
+			return err
+		}
+		dst.Set(newPtr)
+		return nil
+	}
+
+	if srcKind == reflect.Ptr && dstKind != reflect.Ptr {
+		if src.IsNil() {
+			return nil
+		}
+		return assignValue(dst, src.Elem(), srcType, dstType, fieldPath, convertTo, tagName)
+	}
+
+	if srcKind != reflect.Ptr && dstKind == reflect.Ptr {
+		newVal := reflect.New(dType.Elem())
+		if err := assignValue(newVal.Elem(), src, srcType, dstType, fieldPath, convertTo, tagName); err != nil {
+			return err
+		}
+		dst.Set(newVal)
+		return nil
+	}
+
 	if sType.AssignableTo(dType) {
-		if sType.Kind() == reflect.Slice {
-			if err := assignSlice(dst, src, srcType, dstType, fieldPath); err != nil {
-				return err
-			}
-			return nil
-		}
-		if sType.Kind() == reflect.Map {
-			if err := assignMap(dst, src, srcType, dstType, fieldPath); err != nil {
-				return err
-			}
-			return nil
-		}
 		dst.Set(src)
 		return nil
 	}
 
 	if sType.ConvertibleTo(dType) {
 		dst.Set(src.Convert(dType))
-		return nil
-	}
-
-	if sType.Kind() == reflect.Slice && dType.Kind() == reflect.Slice {
-		return assignSlice(dst, src, srcType, dstType, fieldPath)
-	}
-
-	if sType.Kind() == reflect.Map && dType.Kind() == reflect.Map {
-		return assignMap(dst, src, srcType, dstType, fieldPath)
-	}
-
-	if sType.Kind() == reflect.Ptr && dType.Kind() != reflect.Ptr {
-		if src.IsNil() {
-			return nil
-		}
-		return assignValue(dst, src.Elem(), srcType, dstType, fieldPath, convertTo)
-	}
-
-	if sType.Kind() != reflect.Ptr && dType.Kind() == reflect.Ptr {
-		newVal := reflect.New(dType.Elem())
-		if err := assignValue(newVal.Elem(), src, srcType, dstType, fieldPath, convertTo); err != nil {
-			return err
-		}
-		dst.Set(newVal)
 		return nil
 	}
 
