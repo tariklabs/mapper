@@ -12,7 +12,16 @@ import (
 // - a new underlying array is created (modifications to source don't affect destination)
 // - element types are converted if compatible
 // - nested structs within slices are properly mapped using the provided tagName
-func assignSlice(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, fieldPath, tagName string) error {
+func assignSlice(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, fieldPath, tagName string, depth int) error {
+	if depth <= 0 {
+		return &MappingError{
+			SrcType:   srcStructType.String(),
+			DstType:   dstStructType.String(),
+			FieldPath: fieldPath,
+			Reason:    "maximum nesting depth exceeded (possible circular reference)",
+		}
+	}
+
 	if src.IsNil() {
 		dst.Set(reflect.Zero(dst.Type()))
 		return nil
@@ -62,13 +71,13 @@ func assignSlice(dst, src reflect.Value, srcStructType, dstStructType reflect.Ty
 
 		var err error
 		if elementsAreStructs {
-			err = assignStruct(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]", tagName)
+			err = assignStruct(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]", tagName, depth-1)
 		} else if elementsAreSlices {
-			err = assignSlice(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]", tagName)
+			err = assignSlice(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]", tagName, depth-1)
 		} else if elementsAreMaps {
-			err = assignMap(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]", tagName)
+			err = assignMap(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]", tagName, depth-1)
 		} else if elementsArePtrs {
-			err = assignPointerElement(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]", tagName)
+			err = assignPointerElement(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]", tagName, depth-1)
 		} else if elementsAssignable {
 			dstElem.Set(srcElem)
 		} else if elementsConvertible {
@@ -85,7 +94,16 @@ func assignSlice(dst, src reflect.Value, srcStructType, dstStructType reflect.Ty
 }
 
 // assignPointerElement handles pointer elements within slices and maps.
-func assignPointerElement(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, fieldPath, tagName string) error {
+func assignPointerElement(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, fieldPath, tagName string, depth int) error {
+	if depth <= 0 {
+		return &MappingError{
+			SrcType:   srcStructType.String(),
+			DstType:   dstStructType.String(),
+			FieldPath: fieldPath,
+			Reason:    "maximum nesting depth exceeded (possible circular reference)",
+		}
+	}
+
 	if src.IsNil() {
 		dst.Set(reflect.Zero(dst.Type()))
 		return nil
@@ -100,7 +118,19 @@ func assignPointerElement(dst, src reflect.Value, srcStructType, dstStructType r
 	dstElemKind := dstElemType.Kind()
 
 	if srcElemKind == reflect.Struct && dstElemKind == reflect.Struct {
-		if err := assignStruct(newPtr.Elem(), srcElem, srcStructType, dstStructType, fieldPath, tagName); err != nil {
+		if err := assignStruct(newPtr.Elem(), srcElem, srcStructType, dstStructType, fieldPath, tagName, depth-1); err != nil {
+			return err
+		}
+	} else if srcElemKind == reflect.Slice && dstElemKind == reflect.Slice {
+		if err := assignSlice(newPtr.Elem(), srcElem, srcStructType, dstStructType, fieldPath, tagName, depth-1); err != nil {
+			return err
+		}
+	} else if srcElemKind == reflect.Map && dstElemKind == reflect.Map {
+		if err := assignMap(newPtr.Elem(), srcElem, srcStructType, dstStructType, fieldPath, tagName, depth-1); err != nil {
+			return err
+		}
+	} else if srcElemKind == reflect.Ptr && dstElemKind == reflect.Ptr {
+		if err := assignPointerElement(newPtr.Elem(), srcElem, srcStructType, dstStructType, fieldPath, tagName, depth-1); err != nil {
 			return err
 		}
 	} else if srcElem.Type().AssignableTo(dstElemType) {

@@ -1,9 +1,14 @@
 package mapper
 
+// DefaultMaxDepth is the default maximum nesting depth for struct mapping.
+// This prevents stack overflow from circular references.
+const DefaultMaxDepth = 64
+
 type config struct {
 	tagName          string
 	ignoreZeroSource bool
 	strictMode       bool
+	maxDepth         int
 }
 
 func defaultConfig() *config {
@@ -11,6 +16,7 @@ func defaultConfig() *config {
 		tagName:          "map",
 		ignoreZeroSource: false,
 		strictMode:       false,
+		maxDepth:         DefaultMaxDepth,
 	}
 }
 
@@ -37,5 +43,17 @@ func WithIgnoreZeroSource() Option {
 func WithStrictMode() Option {
 	return func(c *config) {
 		c.strictMode = true
+	}
+}
+
+// WithMaxDepth sets the maximum nesting depth for struct mapping.
+// This prevents stack overflow from circular references.
+// Default is 64. Values less than or equal to 0 are ignored and
+// the default depth limit will be used.
+func WithMaxDepth(depth int) Option {
+	return func(c *config) {
+		if depth > 0 {
+			c.maxDepth = depth
+		}
 	}
 }

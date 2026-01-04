@@ -9,7 +9,16 @@ import (
 // - struct fields are mapped by name or tag
 // - nested structs are recursively processed
 // - a new struct is created (deep copy behavior)
-func assignStruct(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, fieldPath, tagName string) error {
+func assignStruct(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, fieldPath, tagName string, depth int) error {
+	if depth <= 0 {
+		return &MappingError{
+			SrcType:   srcStructType.String(),
+			DstType:   dstStructType.String(),
+			FieldPath: fieldPath,
+			Reason:    "maximum nesting depth exceeded (possible circular reference)",
+		}
+	}
+
 	srcType := src.Type()
 	dstType := dst.Type()
 
@@ -54,7 +63,7 @@ func assignStruct(dst, src reflect.Value, srcStructType, dstStructType reflect.T
 
 		nestedPath := fieldPath + "." + dstName
 
-		if err := assignNestedValue(dstField, srcField, srcStructType, dstStructType, nestedPath, tagName, srcFieldMeta.ConvertTo); err != nil {
+		if err := assignNestedValue(dstField, srcField, srcStructType, dstStructType, nestedPath, tagName, srcFieldMeta.ConvertTo, depth); err != nil {
 			return err
 		}
 	}
@@ -64,7 +73,16 @@ func assignStruct(dst, src reflect.Value, srcStructType, dstStructType reflect.T
 
 // assignNestedValue handles value assignment within nested contexts (structs, slices, maps).
 // It supports nested structs, slices, maps, pointers, and type conversions.
-func assignNestedValue(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, fieldPath, tagName, convertTo string) error {
+func assignNestedValue(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, fieldPath, tagName, convertTo string, depth int) error {
+	if depth <= 0 {
+		return &MappingError{
+			SrcType:   srcStructType.String(),
+			DstType:   dstStructType.String(),
+			FieldPath: fieldPath,
+			Reason:    "maximum nesting depth exceeded (possible circular reference)",
+		}
+	}
+
 	if !dst.CanSet() {
 		return &MappingError{
 			SrcType:   srcStructType.String(),
@@ -90,15 +108,15 @@ func assignNestedValue(dst, src reflect.Value, srcStructType, dstStructType refl
 	dstKind := dType.Kind()
 
 	if srcKind == reflect.Struct && dstKind == reflect.Struct {
-		return assignStruct(dst, src, srcStructType, dstStructType, fieldPath, tagName)
+		return assignStruct(dst, src, srcStructType, dstStructType, fieldPath, tagName, depth-1)
 	}
 
 	if srcKind == reflect.Slice && dstKind == reflect.Slice {
-		return assignSlice(dst, src, srcStructType, dstStructType, fieldPath, tagName)
+		return assignSlice(dst, src, srcStructType, dstStructType, fieldPath, tagName, depth-1)
 	}
 
 	if srcKind == reflect.Map && dstKind == reflect.Map {
-		return assignMap(dst, src, srcStructType, dstStructType, fieldPath, tagName)
+		return assignMap(dst, src, srcStructType, dstStructType, fieldPath, tagName, depth-1)
 	}
 
 	if srcKind == reflect.Ptr && dstKind == reflect.Ptr {
@@ -107,7 +125,7 @@ func assignNestedValue(dst, src reflect.Value, srcStructType, dstStructType refl
 			return nil
 		}
 		newPtr := reflect.New(dType.Elem())
-		if err := assignNestedValue(newPtr.Elem(), src.Elem(), srcStructType, dstStructType, fieldPath, tagName, convertTo); err != nil {
+		if err := assignNestedValue(newPtr.Elem(), src.Elem(), srcStructType, dstStructType, fieldPath, tagName, convertTo, depth-1); err != nil {
 			return err
 		}
 		dst.Set(newPtr)
@@ -118,12 +136,12 @@ func assignNestedValue(dst, src reflect.Value, srcStructType, dstStructType refl
 		if src.IsNil() {
 			return nil
 		}
-		return assignNestedValue(dst, src.Elem(), srcStructType, dstStructType, fieldPath, tagName, convertTo)
+		return assignNestedValue(dst, src.Elem(), srcStructType, dstStructType, fieldPath, tagName, convertTo, depth-1)
 	}
 
 	if srcKind != reflect.Ptr && dstKind == reflect.Ptr {
 		newPtr := reflect.New(dType.Elem())
-		if err := assignNestedValue(newPtr.Elem(), src, srcStructType, dstStructType, fieldPath, tagName, convertTo); err != nil {
+		if err := assignNestedValue(newPtr.Elem(), src, srcStructType, dstStructType, fieldPath, tagName, convertTo, depth-1); err != nil {
 			return err
 		}
 		dst.Set(newPtr)

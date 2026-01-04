@@ -93,7 +93,7 @@ func runMapping(dst any, src any, cfg *config) error {
 			continue
 		}
 
-		if err := assignValue(dstField, srcField, srcType, dstType, dstName, srcFieldMeta.ConvertTo, cfg.tagName); err != nil {
+		if err := assignValue(dstField, srcField, srcType, dstType, dstName, srcFieldMeta.ConvertTo, cfg.tagName, cfg.maxDepth); err != nil {
 			return err
 		}
 	}
@@ -102,7 +102,16 @@ func runMapping(dst any, src any, cfg *config) error {
 }
 
 // assignValue tries to assign src to dst, handling basic cases and pointer/value combinations.
-func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPath string, convertTo string, tagName string) error {
+func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPath string, convertTo string, tagName string, depth int) error {
+	if depth <= 0 {
+		return &MappingError{
+			SrcType:   srcType.String(),
+			DstType:   dstType.String(),
+			FieldPath: fieldPath,
+			Reason:    "maximum nesting depth exceeded (possible circular reference)",
+		}
+	}
+
 	if !dst.CanSet() {
 		return &MappingError{
 			SrcType:   srcType.String(),
@@ -128,15 +137,15 @@ func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPat
 	dstKind := dType.Kind()
 
 	if srcKind == reflect.Struct && dstKind == reflect.Struct {
-		return assignStruct(dst, src, srcType, dstType, fieldPath, tagName)
+		return assignStruct(dst, src, srcType, dstType, fieldPath, tagName, depth-1)
 	}
 
 	if srcKind == reflect.Slice && dstKind == reflect.Slice {
-		return assignSlice(dst, src, srcType, dstType, fieldPath, tagName)
+		return assignSlice(dst, src, srcType, dstType, fieldPath, tagName, depth-1)
 	}
 
 	if srcKind == reflect.Map && dstKind == reflect.Map {
-		return assignMap(dst, src, srcType, dstType, fieldPath, tagName)
+		return assignMap(dst, src, srcType, dstType, fieldPath, tagName, depth-1)
 	}
 
 	if srcKind == reflect.Ptr && dstKind == reflect.Ptr {
@@ -159,7 +168,7 @@ func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPat
 		}
 
 		newPtr := reflect.New(dstElemType)
-		if err := assignValue(newPtr.Elem(), src.Elem(), srcType, dstType, fieldPath, convertTo, tagName); err != nil {
+		if err := assignValue(newPtr.Elem(), src.Elem(), srcType, dstType, fieldPath, convertTo, tagName, depth-1); err != nil {
 			return err
 		}
 		dst.Set(newPtr)
@@ -170,12 +179,12 @@ func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPat
 		if src.IsNil() {
 			return nil
 		}
-		return assignValue(dst, src.Elem(), srcType, dstType, fieldPath, convertTo, tagName)
+		return assignValue(dst, src.Elem(), srcType, dstType, fieldPath, convertTo, tagName, depth-1)
 	}
 
 	if srcKind != reflect.Ptr && dstKind == reflect.Ptr {
 		newVal := reflect.New(dType.Elem())
-		if err := assignValue(newVal.Elem(), src, srcType, dstType, fieldPath, convertTo, tagName); err != nil {
+		if err := assignValue(newVal.Elem(), src, srcType, dstType, fieldPath, convertTo, tagName, depth-1); err != nil {
 			return err
 		}
 		dst.Set(newVal)
