@@ -852,3 +852,332 @@ func TestSliceOfStructs_WithNestedStructs(t *testing.T) {
 		t.Errorf("expected Members[1].Address.City = 'LA', got %q", dst.Members[1].Address.City)
 	}
 }
+
+// Test maximum depth limit
+func TestMaxDepthLimit_Exceeded(t *testing.T) {
+	// Create a deeply nested structure that exceeds a small depth limit
+	type Level struct {
+		Value int
+		Next  *Level
+	}
+
+	// Build a chain of 10 levels
+	src := &Level{Value: 1}
+	current := src
+	for i := 2; i <= 10; i++ {
+		current.Next = &Level{Value: i}
+		current = current.Next
+	}
+
+	var dst Level
+
+	// With depth limit of 3, this should fail
+	err := MapWithOptions(&dst, *src, WithMaxDepth(3))
+	if err == nil {
+		t.Fatal("expected error due to depth limit exceeded, got nil")
+	}
+
+	mappingErr, ok := err.(*MappingError)
+	if !ok {
+		t.Fatalf("expected *MappingError, got %T", err)
+	}
+
+	if mappingErr.Reason != "maximum nesting depth exceeded (possible circular reference)" {
+		t.Errorf("expected depth exceeded reason, got %q", mappingErr.Reason)
+	}
+}
+
+func TestMaxDepthLimit_NotExceeded(t *testing.T) {
+	// Create a nested structure within limits
+	type Level struct {
+		Value int
+		Next  *Level
+	}
+
+	src := Level{
+		Value: 1,
+		Next: &Level{
+			Value: 2,
+			Next: &Level{
+				Value: 3,
+			},
+		},
+	}
+
+	var dst Level
+
+	// With default depth limit of 64, this should succeed
+	err := Map(&dst, src)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if dst.Value != 1 {
+		t.Errorf("expected Value = 1, got %d", dst.Value)
+	}
+	if dst.Next == nil || dst.Next.Value != 2 {
+		t.Errorf("expected Next.Value = 2")
+	}
+	if dst.Next.Next == nil || dst.Next.Next.Value != 3 {
+		t.Errorf("expected Next.Next.Value = 3")
+	}
+}
+
+// Test depth limit with slices containing pointers to structs
+func TestMaxDepthLimit_SliceWithPointers(t *testing.T) {
+	type Node struct {
+		Value    int
+		Children []*Node
+	}
+
+	// Build a tree-like structure that exceeds depth limit
+	src := Node{
+		Value: 1,
+		Children: []*Node{
+			{
+				Value: 2,
+				Children: []*Node{
+					{
+						Value: 3,
+						Children: []*Node{
+							{Value: 4},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	var dst Node
+
+	// With depth limit of 3, this should fail
+	err := MapWithOptions(&dst, src, WithMaxDepth(3))
+	if err == nil {
+		t.Fatal("expected error due to depth limit exceeded in slice, got nil")
+	}
+
+	mappingErr, ok := err.(*MappingError)
+	if !ok {
+		t.Fatalf("expected *MappingError, got %T", err)
+	}
+
+	if mappingErr.Reason != "maximum nesting depth exceeded (possible circular reference)" {
+		t.Errorf("expected depth exceeded reason, got %q", mappingErr.Reason)
+	}
+}
+
+// Test depth limit with maps containing pointers to structs
+func TestMaxDepthLimit_MapWithPointers(t *testing.T) {
+	type Node struct {
+		Value   int
+		Related map[string]*Node
+	}
+
+	// Build a structure with nested maps that exceeds depth limit
+	src := Node{
+		Value: 1,
+		Related: map[string]*Node{
+			"child": {
+				Value: 2,
+				Related: map[string]*Node{
+					"grandchild": {
+						Value: 3,
+						Related: map[string]*Node{
+							"great-grandchild": {Value: 4},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	var dst Node
+
+	// With depth limit of 3, this should fail
+	err := MapWithOptions(&dst, src, WithMaxDepth(3))
+	if err == nil {
+		t.Fatal("expected error due to depth limit exceeded in map, got nil")
+	}
+
+	mappingErr, ok := err.(*MappingError)
+	if !ok {
+		t.Fatalf("expected *MappingError, got %T", err)
+	}
+
+	if mappingErr.Reason != "maximum nesting depth exceeded (possible circular reference)" {
+		t.Errorf("expected depth exceeded reason, got %q", mappingErr.Reason)
+	}
+}
+
+// Test depth limit with deeply nested slices (no structs)
+func TestMaxDepthLimit_NestedSlices(t *testing.T) {
+	type Container struct {
+		Data [][][]int
+	}
+
+	src := Container{
+		Data: [][][]int{
+			{
+				{1, 2, 3},
+				{4, 5, 6},
+			},
+		},
+	}
+
+	var dst Container
+
+	// With depth limit of 2, nested slices should fail
+	err := MapWithOptions(&dst, src, WithMaxDepth(2))
+	if err == nil {
+		t.Fatal("expected error due to depth limit exceeded in nested slices, got nil")
+	}
+
+	mappingErr, ok := err.(*MappingError)
+	if !ok {
+		t.Fatalf("expected *MappingError, got %T", err)
+	}
+
+	if mappingErr.Reason != "maximum nesting depth exceeded (possible circular reference)" {
+		t.Errorf("expected depth exceeded reason, got %q", mappingErr.Reason)
+	}
+}
+
+// Test depth limit with deeply nested maps (no structs)
+func TestMaxDepthLimit_NestedMaps(t *testing.T) {
+	type Container struct {
+		Data map[string]map[string]map[string]int
+	}
+
+	src := Container{
+		Data: map[string]map[string]map[string]int{
+			"a": {
+				"b": {
+					"c": 1,
+				},
+			},
+		},
+	}
+
+	var dst Container
+
+	// With depth limit of 2, nested maps should fail
+	err := MapWithOptions(&dst, src, WithMaxDepth(2))
+	if err == nil {
+		t.Fatal("expected error due to depth limit exceeded in nested maps, got nil")
+	}
+
+	mappingErr, ok := err.(*MappingError)
+	if !ok {
+		t.Fatalf("expected *MappingError, got %T", err)
+	}
+
+	if mappingErr.Reason != "maximum nesting depth exceeded (possible circular reference)" {
+		t.Errorf("expected depth exceeded reason, got %q", mappingErr.Reason)
+	}
+}
+
+// Test depth limit with pointer chains
+func TestMaxDepthLimit_PointerChain(t *testing.T) {
+	type Box struct {
+		Value int
+		Inner **Box
+	}
+
+	innermost := &Box{Value: 3}
+	inner := &Box{Value: 2, Inner: &innermost}
+	src := Box{Value: 1, Inner: &inner}
+
+	var dst Box
+
+	// With depth limit of 2, pointer chain should fail
+	err := MapWithOptions(&dst, src, WithMaxDepth(2))
+	if err == nil {
+		t.Fatal("expected error due to depth limit exceeded in pointer chain, got nil")
+	}
+
+	mappingErr, ok := err.(*MappingError)
+	if !ok {
+		t.Fatalf("expected *MappingError, got %T", err)
+	}
+
+	if mappingErr.Reason != "maximum nesting depth exceeded (possible circular reference)" {
+		t.Errorf("expected depth exceeded reason, got %q", mappingErr.Reason)
+	}
+}
+
+// Test that custom MaxDepth option works correctly
+func TestMaxDepthLimit_CustomDepth(t *testing.T) {
+	type Level struct {
+		Value int
+		Next  *Level
+	}
+
+	// Build a chain of 5 levels
+	src := Level{Value: 1}
+	current := &src
+	for i := 2; i <= 5; i++ {
+		current.Next = &Level{Value: i}
+		current = current.Next
+	}
+
+	var dst Level
+
+	// With depth limit of 10, this should succeed (5 levels < 10)
+	err := MapWithOptions(&dst, src, WithMaxDepth(10))
+	if err != nil {
+		t.Fatalf("unexpected error with sufficient depth limit: %v", err)
+	}
+
+	// Verify the chain was copied correctly
+	d := &dst
+	for i := 1; i <= 5; i++ {
+		if d == nil {
+			t.Fatalf("expected level %d, got nil", i)
+		}
+		if d.Value != i {
+			t.Errorf("expected Value = %d, got %d", i, d.Value)
+		}
+		d = d.Next
+	}
+}
+
+// Test depth limit with mixed nested structures
+func TestMaxDepthLimit_MixedStructures(t *testing.T) {
+	type Inner struct {
+		Value int
+	}
+
+	type Container struct {
+		Slices [][]Inner
+		Maps   map[string]map[string]Inner
+	}
+
+	src := Container{
+		Slices: [][]Inner{
+			{{Value: 1}, {Value: 2}},
+		},
+		Maps: map[string]map[string]Inner{
+			"outer": {
+				"inner": {Value: 3},
+			},
+		},
+	}
+
+	var dst Container
+
+	// With sufficient depth, this should succeed
+	err := MapWithOptions(&dst, src, WithMaxDepth(10))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(dst.Slices) != 1 || len(dst.Slices[0]) != 2 {
+		t.Errorf("expected Slices structure to be preserved")
+	}
+	if dst.Slices[0][0].Value != 1 {
+		t.Errorf("expected Slices[0][0].Value = 1, got %d", dst.Slices[0][0].Value)
+	}
+	if dst.Maps["outer"]["inner"].Value != 3 {
+		t.Errorf("expected Maps[outer][inner].Value = 3, got %d", dst.Maps["outer"]["inner"].Value)
+	}
+}
