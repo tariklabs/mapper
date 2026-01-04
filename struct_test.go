@@ -794,7 +794,7 @@ func TestNestedStruct_TypeConversion(t *testing.T) {
 }
 
 // Slice of Structs with Nested Structs
-	type SrcNestedAddress struct {
+type SrcNestedAddress struct {
 	City string
 }
 
