@@ -66,7 +66,7 @@ func assignSlice(dst, src reflect.Value, srcStructType, dstStructType reflect.Ty
 		} else if elementsAreSlices {
 			err = assignSlice(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]", tagName)
 		} else if elementsAreMaps {
-			err = assignMapWithStructs(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]", tagName)
+			err = assignMap(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]", tagName)
 		} else if elementsArePtrs {
 			err = assignPointerElement(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]", tagName)
 		} else if elementsAssignable {

@@ -136,7 +136,7 @@ func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPat
 	}
 
 	if srcKind == reflect.Map && dstKind == reflect.Map {
-		return assignMapWithStructs(dst, src, srcType, dstType, fieldPath, tagName)
+		return assignMap(dst, src, srcType, dstType, fieldPath, tagName)
 	}
 
 	if srcKind == reflect.Ptr && dstKind == reflect.Ptr {

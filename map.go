@@ -11,13 +11,8 @@ import (
 // - empty maps remain empty (not nil)
 // - a new underlying map is created (modifications to source don't affect destination)
 // - key and value types are converted if compatible
-func assignMap(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, fieldPath string) error {
-	return assignMapWithStructs(dst, src, srcStructType, dstStructType, fieldPath, "")
-}
-
-// assignMapWithStructs handles map assignment with support for nested structs.
-// It extends assignMap to properly map struct values within maps.
-func assignMapWithStructs(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, fieldPath, tagName string) error {
+// - nested structs within maps are properly mapped using the provided tagName
+func assignMap(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, fieldPath, tagName string) error {
 	if src.IsNil() {
 		dst.Set(reflect.Zero(dst.Type()))
 		return nil
@@ -90,7 +85,7 @@ func assignMapWithStructs(dst, src reflect.Value, srcStructType, dstStructType r
 		} else if valuesAreNestedMaps {
 			dstVal = reflect.New(dstValType).Elem()
 			valPath := fieldPath + "[" + fmt.Sprint(srcKey.Interface()) + "]"
-			if err := assignMapWithStructs(dstVal, srcVal, srcStructType, dstStructType, valPath, tagName); err != nil {
+			if err := assignMap(dstVal, srcVal, srcStructType, dstStructType, valPath, tagName); err != nil {
 				return err
 			}
 		} else if valuesAreNestedSlices {
