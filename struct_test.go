@@ -4,10 +4,7 @@ import (
 	"testing"
 )
 
-// =============================================================================
 // Nested Struct Tests
-// =============================================================================
-
 type SrcAddress struct {
 	Street  string
 	City    string
@@ -150,10 +147,7 @@ func TestNestedStruct_ThreeLevels(t *testing.T) {
 	}
 }
 
-// =============================================================================
 // Pointer to Nested Struct Tests
-// =============================================================================
-
 type SrcWithPtrAddress struct {
 	Name    string
 	Address *SrcAddress
@@ -231,10 +225,7 @@ func TestNestedStruct_Pointer_DeepCopy(t *testing.T) {
 	}
 }
 
-// =============================================================================
 // Struct in Slice Tests
-// =============================================================================
-
 type SrcItem struct {
 	ID    int
 	Name  string
@@ -429,10 +420,7 @@ func TestPointerStructInSlice_DeepCopy(t *testing.T) {
 	}
 }
 
-// =============================================================================
 // Struct in Map Tests
-// =============================================================================
-
 type SrcConfig struct {
 	Host string
 	Port int
@@ -619,10 +607,7 @@ func TestPointerStructInMap_DeepCopy(t *testing.T) {
 	}
 }
 
-// =============================================================================
 // Complex Nested Structures Tests
-// =============================================================================
-
 type SrcNestedItem struct {
 	Name  string
 	Value int
@@ -716,10 +701,7 @@ func TestComplex_MapOfSlicesOfStructs(t *testing.T) {
 	}
 }
 
-// =============================================================================
 // Tag Mapping with Nested Structs
-// =============================================================================
-
 type SrcTaggedAddress struct {
 	StreetName string `map:"Street"`
 	CityName   string `map:"City"`
@@ -765,10 +747,7 @@ func TestNestedStruct_WithTags(t *testing.T) {
 	}
 }
 
-// =============================================================================
 // Type Conversion in Nested Structs
-// =============================================================================
-
 type SrcTypedAddress struct {
 	Street  string
 	ZipCode int32
@@ -814,11 +793,8 @@ func TestNestedStruct_TypeConversion(t *testing.T) {
 	}
 }
 
-// =============================================================================
 // Slice of Structs with Nested Structs
-// =============================================================================
-
-type SrcNestedAddress struct {
+	type SrcNestedAddress struct {
 	City string
 }
 
