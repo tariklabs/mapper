@@ -63,6 +63,8 @@ func assignMapWithStructs(dst, src reflect.Value, srcStructType, dstStructType r
 
 	newMap := reflect.MakeMapWithSize(dType, src.Len())
 
+	needsProcessing := valuesAreStructs || valuesAreNestedMaps || valuesAreNestedSlices || valuesArePtrs || (!valuesAssignable && valuesConvertible)
+
 	iter := src.MapRange()
 	for iter.Next() {
 		srcKey := iter.Key()
@@ -76,32 +78,34 @@ func assignMapWithStructs(dst, src reflect.Value, srcStructType, dstStructType r
 		}
 
 		var dstVal reflect.Value
-		keyStr := fmt.Sprint(srcKey.Interface())
-		valPath := fieldPath + "[" + keyStr + "]"
 
-		if valuesAreStructs {
+		if !needsProcessing && valuesAssignable {
+			dstVal = srcVal
+		} else if valuesAreStructs {
 			dstVal = reflect.New(dstValType).Elem()
+			valPath := fieldPath + "[" + fmt.Sprint(srcKey.Interface()) + "]"
 			if err := assignStruct(dstVal, srcVal, srcStructType, dstStructType, valPath, tagName); err != nil {
 				return err
 			}
 		} else if valuesAreNestedMaps {
 			dstVal = reflect.New(dstValType).Elem()
+			valPath := fieldPath + "[" + fmt.Sprint(srcKey.Interface()) + "]"
 			if err := assignMapWithStructs(dstVal, srcVal, srcStructType, dstStructType, valPath, tagName); err != nil {
 				return err
 			}
 		} else if valuesAreNestedSlices {
 			dstVal = reflect.New(dstValType).Elem()
+			valPath := fieldPath + "[" + fmt.Sprint(srcKey.Interface()) + "]"
 			if err := assignSliceWithStructs(dstVal, srcVal, srcStructType, dstStructType, valPath, tagName); err != nil {
 				return err
 			}
 		} else if valuesArePtrs {
 			dstVal = reflect.New(dstValType).Elem()
+			valPath := fieldPath + "[" + fmt.Sprint(srcKey.Interface()) + "]"
 			if err := assignPointerElement(dstVal, srcVal, srcStructType, dstStructType, valPath, tagName); err != nil {
 				return err
 			}
-		} else if valuesAssignable {
-			dstVal = srcVal
-		} else {
+		} else if valuesConvertible {
 			dstVal = srcVal.Convert(dstValType)
 		}
 

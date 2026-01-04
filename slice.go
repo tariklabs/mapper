@@ -29,8 +29,17 @@ func assignSliceWithStructs(dst, src reflect.Value, srcStructType, dstStructType
 	dstElemType := dType.Elem()
 
 	length := src.Len()
-
 	newSlice := reflect.MakeSlice(dType, length, length)
+
+	// Fast path: identical simple element types can use reflect.Copy
+	if srcElemType == dstElemType {
+		elemKind := srcElemType.Kind()
+		if elemKind != reflect.Struct && elemKind != reflect.Slice && elemKind != reflect.Map && elemKind != reflect.Ptr {
+			reflect.Copy(newSlice, src)
+			dst.Set(newSlice)
+			return nil
+		}
+	}
 
 	srcElemKind := srcElemType.Kind()
 	dstElemKind := dstElemType.Kind()
@@ -51,31 +60,28 @@ func assignSliceWithStructs(dst, src reflect.Value, srcStructType, dstStructType
 		}
 	}
 
+	// Slow path: need per-element processing
 	for i := 0; i < length; i++ {
 		srcElem := src.Index(i)
 		dstElem := newSlice.Index(i)
-		elemPath := fieldPath + "[" + strconv.Itoa(i) + "]"
 
+		var err error
 		if elementsAreStructs {
-			if err := assignStruct(dstElem, srcElem, srcStructType, dstStructType, elemPath, tagName); err != nil {
-				return err
-			}
+			err = assignStruct(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]", tagName)
 		} else if elementsAreSlices {
-			if err := assignSliceWithStructs(dstElem, srcElem, srcStructType, dstStructType, elemPath, tagName); err != nil {
-				return err
-			}
+			err = assignSliceWithStructs(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]", tagName)
 		} else if elementsAreMaps {
-			if err := assignMapWithStructs(dstElem, srcElem, srcStructType, dstStructType, elemPath, tagName); err != nil {
-				return err
-			}
+			err = assignMapWithStructs(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]", tagName)
 		} else if elementsArePtrs {
-			if err := assignPointerElement(dstElem, srcElem, srcStructType, dstStructType, elemPath, tagName); err != nil {
-				return err
-			}
+			err = assignPointerElement(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]", tagName)
 		} else if elementsAssignable {
 			dstElem.Set(srcElem)
 		} else if elementsConvertible {
 			dstElem.Set(srcElem.Convert(dstElemType))
+		}
+
+		if err != nil {
+			return err
 		}
 	}
 

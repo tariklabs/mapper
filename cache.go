@@ -41,17 +41,16 @@ func getStructMeta(t reflect.Type, tagName string) (*structMeta, error) {
 		return v.(*structMeta), nil
 	}
 
+	numFields := t.NumField()
+
 	m := &structMeta{
 		Type:         t,
-		FieldsByName: make(map[string]fieldMeta),
-		FieldsByTag:  make(map[string]fieldMeta),
+		FieldsByName: make(map[string]fieldMeta, numFields),
+		FieldsByTag:  make(map[string]fieldMeta, numFields),
 	}
-
-	numFields := t.NumField()
 	for i := 0; i < numFields; i++ {
 		sf := t.Field(i)
 
-		// Skip unexported fields.
 		if !sf.IsExported() {
 			continue
 		}
