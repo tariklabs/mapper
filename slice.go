@@ -7,8 +7,16 @@ import (
 
 // buildSlicePath constructs a field path with slice index notation.
 // Only called when an error occurs to avoid allocation in the hot path.
+// Uses strconv.AppendInt to reduce allocations.
 func buildSlicePath(basePath string, index int) string {
-	return basePath + "[" + strconv.Itoa(index) + "]"
+	// Pre-allocate buffer: basePath + "[" + digits + "]"
+	// Max int64 is 19 digits, but typical indices are small
+	buf := make([]byte, 0, len(basePath)+12)
+	buf = append(buf, basePath...)
+	buf = append(buf, '[')
+	buf = strconv.AppendInt(buf, int64(index), 10)
+	buf = append(buf, ']')
+	return string(buf)
 }
 
 // assignSlice handles slice assignment with proper deep copying and type conversion.
@@ -100,28 +108,58 @@ func assignSlice(dst, src reflect.Value, srcStructType, dstStructType reflect.Ty
 	return nil
 }
 
-// assignStructWithIndex is a wrapper that builds the path with index only when needed.
+// prependIndexPath prepends the slice index path to a MappingError's FieldPath.
+// This is called only when an error occurs, making path building lazy.
+func prependIndexPath(err error, basePath string, index int) error {
+	if me, ok := err.(*MappingError); ok {
+		indexPath := buildSlicePath(basePath, index)
+		if me.FieldPath != "" {
+			me.FieldPath = indexPath + "." + me.FieldPath
+		} else {
+			me.FieldPath = indexPath
+		}
+	}
+	return err
+}
+
+// assignStructWithIndex is a wrapper that builds the path with index only when an error occurs.
 func assignStructWithIndex(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, basePath string, index int, tagName string, depth int) error {
-	err := assignStruct(dst, src, srcStructType, dstStructType, buildSlicePath(basePath, index), tagName, depth)
-	return err
+	// Pass empty path to avoid allocation; path is built only on error
+	err := assignStruct(dst, src, srcStructType, dstStructType, "", tagName, depth)
+	if err != nil {
+		return prependIndexPath(err, basePath, index)
+	}
+	return nil
 }
 
-// assignSliceWithIndex is a wrapper that builds the path with index only when needed.
+// assignSliceWithIndex is a wrapper that builds the path with index only when an error occurs.
 func assignSliceWithIndex(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, basePath string, index int, tagName string, depth int) error {
-	err := assignSlice(dst, src, srcStructType, dstStructType, buildSlicePath(basePath, index), tagName, depth)
-	return err
+	// Pass empty path to avoid allocation; path is built only on error
+	err := assignSlice(dst, src, srcStructType, dstStructType, "", tagName, depth)
+	if err != nil {
+		return prependIndexPath(err, basePath, index)
+	}
+	return nil
 }
 
-// assignMapWithIndex is a wrapper that builds the path with index only when needed.
+// assignMapWithIndex is a wrapper that builds the path with index only when an error occurs.
 func assignMapWithIndex(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, basePath string, index int, tagName string, depth int) error {
-	err := assignMap(dst, src, srcStructType, dstStructType, buildSlicePath(basePath, index), tagName, depth)
-	return err
+	// Pass empty path to avoid allocation; path is built only on error
+	err := assignMap(dst, src, srcStructType, dstStructType, "", tagName, depth)
+	if err != nil {
+		return prependIndexPath(err, basePath, index)
+	}
+	return nil
 }
 
-// assignPointerElementWithIndex is a wrapper that builds the path with index only when needed.
+// assignPointerElementWithIndex is a wrapper that builds the path with index only when an error occurs.
 func assignPointerElementWithIndex(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, basePath string, index int, tagName string, depth int) error {
-	err := assignPointerElement(dst, src, srcStructType, dstStructType, buildSlicePath(basePath, index), tagName, depth)
-	return err
+	// Pass empty path to avoid allocation; path is built only on error
+	err := assignPointerElement(dst, src, srcStructType, dstStructType, "", tagName, depth)
+	if err != nil {
+		return prependIndexPath(err, basePath, index)
+	}
+	return nil
 }
 
 // assignPointerElement handles pointer elements within slices and maps.

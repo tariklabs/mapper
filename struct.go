@@ -47,7 +47,9 @@ func assignStruct(dst, src reflect.Value, srcStructType, dstStructType reflect.T
 		}
 	}
 
-	for dstName, dstFieldMeta := range dstMeta.FieldsByName {
+	// Iterate over destination fields slice (better cache locality than map iteration)
+	for _, dstFieldMeta := range dstMeta.Fields {
+		dstName := dstFieldMeta.Name
 		srcFieldMeta, ok := srcMeta.FieldsByName[dstName]
 
 		if !ok {

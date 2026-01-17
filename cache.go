@@ -15,8 +15,9 @@ type fieldMeta struct {
 
 type structMeta struct {
 	Type         reflect.Type
-	FieldsByName map[string]*fieldMeta
-	FieldsByTag  map[string]*fieldMeta
+	Fields       []*fieldMeta          // Slice for iteration (better cache locality)
+	FieldsByName map[string]*fieldMeta // Map for name lookup
+	FieldsByTag  map[string]*fieldMeta // Map for tag lookup
 	HasComposite bool
 }
 
@@ -54,6 +55,7 @@ func buildStructMeta(t reflect.Type, tagName string) *structMeta {
 
 	m := &structMeta{
 		Type:         t,
+		Fields:       make([]*fieldMeta, 0, numFields),
 		FieldsByName: make(map[string]*fieldMeta, numFields),
 		FieldsByTag:  make(map[string]*fieldMeta, numFields),
 		HasComposite: false,
@@ -81,6 +83,7 @@ func buildStructMeta(t reflect.Type, tagName string) *structMeta {
 			meta.ConvertTo = convTag
 		}
 
+		m.Fields = append(m.Fields, meta)
 		m.FieldsByName[sf.Name] = meta
 
 		if tagName != "" {
