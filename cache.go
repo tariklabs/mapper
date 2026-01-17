@@ -20,17 +20,12 @@ type structMeta struct {
 	HasComposite bool
 }
 
-// Two-level cache: first by reflect.Type (most common), then by tagName
-// This optimizes the common case where tagName is constant across an application
-var (
-	typeCache     = make(map[reflect.Type]*tagCache)
-	typeCacheLock sync.RWMutex
-)
-
-type tagCache struct {
-	sync.RWMutex
-	entries map[string]*structMeta
+type cacheKey struct {
+	typ     reflect.Type
+	tagName string
 }
+
+var structMetaCache sync.Map // map[cacheKey]*structMeta
 
 func getStructMeta(t reflect.Type, tagName string) (*structMeta, error) {
 	if t.Kind() != reflect.Struct {
@@ -42,41 +37,16 @@ func getStructMeta(t reflect.Type, tagName string) (*structMeta, error) {
 		}
 	}
 
-	typeCacheLock.RLock()
-	tc := typeCache[t]
-	typeCacheLock.RUnlock()
+	key := cacheKey{typ: t, tagName: tagName}
 
-	if tc != nil {
-		tc.RLock()
-		if m := tc.entries[tagName]; m != nil {
-			tc.RUnlock()
-			return m, nil
-		}
-		tc.RUnlock()
+	if cached, ok := structMetaCache.Load(key); ok {
+		return cached.(*structMeta), nil
 	}
 
-	// Slow path: compute metadata
 	m := buildStructMeta(t, tagName)
 
-	// Store in cache
-	typeCacheLock.Lock()
-	tc = typeCache[t]
-	if tc == nil {
-		tc = &tagCache{entries: make(map[string]*structMeta, 2)}
-		typeCache[t] = tc
-	}
-	tc.Lock()
-	typeCacheLock.Unlock()
-
-	// Double-check in case another goroutine computed it
-	if existing := tc.entries[tagName]; existing != nil {
-		tc.Unlock()
-		return existing, nil
-	}
-	tc.entries[tagName] = m
-	tc.Unlock()
-
-	return m, nil
+	actual, _ := structMetaCache.LoadOrStore(key, m)
+	return actual.(*structMeta), nil
 }
 
 func buildStructMeta(t reflect.Type, tagName string) *structMeta {
@@ -96,7 +66,6 @@ func buildStructMeta(t reflect.Type, tagName string) *structMeta {
 			continue
 		}
 
-		// Check for composite types that need deep copy
 		switch sf.Type.Kind() {
 		case reflect.Slice, reflect.Map, reflect.Ptr, reflect.Struct:
 			m.HasComposite = true
