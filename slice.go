@@ -5,6 +5,12 @@ import (
 	"strconv"
 )
 
+// buildSlicePath constructs a field path with slice index notation.
+// Only called when an error occurs to avoid allocation in the hot path.
+func buildSlicePath(basePath string, index int) string {
+	return basePath + "[" + strconv.Itoa(index) + "]"
+}
+
 // assignSlice handles slice assignment with proper deep copying and type conversion.
 // It ensures that:
 // - nil slices remain nil
@@ -65,19 +71,20 @@ func assignSlice(dst, src reflect.Value, srcStructType, dstStructType reflect.Ty
 	}
 
 	// Slow path: need per-element processing
+	// Pass fieldPath and index separately; path with index is only built on error
 	for i := 0; i < length; i++ {
 		srcElem := src.Index(i)
 		dstElem := newSlice.Index(i)
 
 		var err error
 		if elementsAreStructs {
-			err = assignStruct(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]", tagName, depth-1)
+			err = assignStructWithIndex(dstElem, srcElem, srcStructType, dstStructType, fieldPath, i, tagName, depth-1)
 		} else if elementsAreSlices {
-			err = assignSlice(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]", tagName, depth-1)
+			err = assignSliceWithIndex(dstElem, srcElem, srcStructType, dstStructType, fieldPath, i, tagName, depth-1)
 		} else if elementsAreMaps {
-			err = assignMap(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]", tagName, depth-1)
+			err = assignMapWithIndex(dstElem, srcElem, srcStructType, dstStructType, fieldPath, i, tagName, depth-1)
 		} else if elementsArePtrs {
-			err = assignPointerElement(dstElem, srcElem, srcStructType, dstStructType, fieldPath+"["+strconv.Itoa(i)+"]", tagName, depth-1)
+			err = assignPointerElementWithIndex(dstElem, srcElem, srcStructType, dstStructType, fieldPath, i, tagName, depth-1)
 		} else if elementsAssignable {
 			dstElem.Set(srcElem)
 		} else if elementsConvertible {
@@ -91,6 +98,30 @@ func assignSlice(dst, src reflect.Value, srcStructType, dstStructType reflect.Ty
 
 	dst.Set(newSlice)
 	return nil
+}
+
+// assignStructWithIndex is a wrapper that builds the path with index only when needed.
+func assignStructWithIndex(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, basePath string, index int, tagName string, depth int) error {
+	err := assignStruct(dst, src, srcStructType, dstStructType, buildSlicePath(basePath, index), tagName, depth)
+	return err
+}
+
+// assignSliceWithIndex is a wrapper that builds the path with index only when needed.
+func assignSliceWithIndex(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, basePath string, index int, tagName string, depth int) error {
+	err := assignSlice(dst, src, srcStructType, dstStructType, buildSlicePath(basePath, index), tagName, depth)
+	return err
+}
+
+// assignMapWithIndex is a wrapper that builds the path with index only when needed.
+func assignMapWithIndex(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, basePath string, index int, tagName string, depth int) error {
+	err := assignMap(dst, src, srcStructType, dstStructType, buildSlicePath(basePath, index), tagName, depth)
+	return err
+}
+
+// assignPointerElementWithIndex is a wrapper that builds the path with index only when needed.
+func assignPointerElementWithIndex(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, basePath string, index int, tagName string, depth int) error {
+	err := assignPointerElement(dst, src, srcStructType, dstStructType, buildSlicePath(basePath, index), tagName, depth)
+	return err
 }
 
 // assignPointerElement handles pointer elements within slices and maps.

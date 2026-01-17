@@ -61,9 +61,8 @@ func assignStruct(dst, src reflect.Value, srcStructType, dstStructType reflect.T
 		srcField := src.FieldByIndex(srcFieldMeta.Index)
 		dstField := dst.FieldByIndex(dstFieldMeta.Index)
 
-		nestedPath := fieldPath + "." + dstName
-
-		if err := assignNestedValue(dstField, srcField, srcStructType, dstStructType, nestedPath, tagName, srcFieldMeta.ConvertTo, depth); err != nil {
+		// Pass base path and field name separately; path is only built on error
+		if err := assignNestedValue(dstField, srcField, srcStructType, dstStructType, fieldPath, dstName, tagName, srcFieldMeta.ConvertTo, depth); err != nil {
 			return err
 		}
 	}
@@ -71,14 +70,25 @@ func assignStruct(dst, src reflect.Value, srcStructType, dstStructType reflect.T
 	return nil
 }
 
+// buildPath constructs the full field path from base path and field name.
+// Only called when an error occurs to avoid allocation in the hot path.
+func buildPath(basePath, fieldName string) string {
+	if basePath == "" {
+		return fieldName
+	}
+	return basePath + "." + fieldName
+}
+
 // assignNestedValue handles value assignment within nested contexts (structs, slices, maps).
 // It supports nested structs, slices, maps, pointers, and type conversions.
-func assignNestedValue(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, fieldPath, tagName, convertTo string, depth int) error {
+// basePath and fieldName are kept separate to avoid string concatenation in the hot path;
+// the full path is only built when an error occurs.
+func assignNestedValue(dst, src reflect.Value, srcStructType, dstStructType reflect.Type, basePath, fieldName, tagName, convertTo string, depth int) error {
 	if depth <= 0 {
 		return &MappingError{
 			SrcType:   srcStructType.String(),
 			DstType:   dstStructType.String(),
-			FieldPath: fieldPath,
+			FieldPath: buildPath(basePath, fieldName),
 			Reason:    "maximum nesting depth exceeded (possible circular reference)",
 		}
 	}
@@ -87,7 +97,7 @@ func assignNestedValue(dst, src reflect.Value, srcStructType, dstStructType refl
 		return &MappingError{
 			SrcType:   srcStructType.String(),
 			DstType:   dstStructType.String(),
-			FieldPath: fieldPath,
+			FieldPath: buildPath(basePath, fieldName),
 			Reason:    "destination field cannot be set",
 		}
 	}
@@ -96,7 +106,8 @@ func assignNestedValue(dst, src reflect.Value, srcStructType, dstStructType refl
 	dType := dst.Type()
 
 	if convertTo != "" && sType.Kind() == reflect.String {
-		converted, err := convertString(src.String(), convertTo, srcStructType, dstStructType, fieldPath)
+		fullPath := buildPath(basePath, fieldName)
+		converted, err := convertString(src.String(), convertTo, srcStructType, dstStructType, fullPath)
 		if err != nil {
 			return err
 		}
@@ -107,16 +118,39 @@ func assignNestedValue(dst, src reflect.Value, srcStructType, dstStructType refl
 	srcKind := sType.Kind()
 	dstKind := dType.Kind()
 
+	// Fast path: directly assignable or convertible types (most common for primitive fields)
+	// Check these first to avoid path building for the majority of field assignments
+	if srcKind != reflect.Struct && srcKind != reflect.Slice && srcKind != reflect.Map && srcKind != reflect.Ptr &&
+		dstKind != reflect.Struct && dstKind != reflect.Slice && dstKind != reflect.Map && dstKind != reflect.Ptr {
+		if sType.AssignableTo(dType) {
+			dst.Set(src)
+			return nil
+		}
+		if sType.ConvertibleTo(dType) {
+			dst.Set(src.Convert(dType))
+			return nil
+		}
+		return &MappingError{
+			SrcType:   srcStructType.String(),
+			DstType:   dstStructType.String(),
+			FieldPath: buildPath(basePath, fieldName),
+			Reason:    "incompatible field types: " + sType.String() + " -> " + dType.String(),
+		}
+	}
+
+	// Slow path: complex types that need recursion - build path once here
+	fullPath := buildPath(basePath, fieldName)
+
 	if srcKind == reflect.Struct && dstKind == reflect.Struct {
-		return assignStruct(dst, src, srcStructType, dstStructType, fieldPath, tagName, depth-1)
+		return assignStruct(dst, src, srcStructType, dstStructType, fullPath, tagName, depth-1)
 	}
 
 	if srcKind == reflect.Slice && dstKind == reflect.Slice {
-		return assignSlice(dst, src, srcStructType, dstStructType, fieldPath, tagName, depth-1)
+		return assignSlice(dst, src, srcStructType, dstStructType, fullPath, tagName, depth-1)
 	}
 
 	if srcKind == reflect.Map && dstKind == reflect.Map {
-		return assignMap(dst, src, srcStructType, dstStructType, fieldPath, tagName, depth-1)
+		return assignMap(dst, src, srcStructType, dstStructType, fullPath, tagName, depth-1)
 	}
 
 	if srcKind == reflect.Ptr && dstKind == reflect.Ptr {
@@ -125,7 +159,7 @@ func assignNestedValue(dst, src reflect.Value, srcStructType, dstStructType refl
 			return nil
 		}
 		newPtr := reflect.New(dType.Elem())
-		if err := assignNestedValue(newPtr.Elem(), src.Elem(), srcStructType, dstStructType, fieldPath, tagName, convertTo, depth-1); err != nil {
+		if err := assignNestedValue(newPtr.Elem(), src.Elem(), srcStructType, dstStructType, fullPath, "", tagName, convertTo, depth-1); err != nil {
 			return err
 		}
 		dst.Set(newPtr)
@@ -136,12 +170,12 @@ func assignNestedValue(dst, src reflect.Value, srcStructType, dstStructType refl
 		if src.IsNil() {
 			return nil
 		}
-		return assignNestedValue(dst, src.Elem(), srcStructType, dstStructType, fieldPath, tagName, convertTo, depth-1)
+		return assignNestedValue(dst, src.Elem(), srcStructType, dstStructType, fullPath, "", tagName, convertTo, depth-1)
 	}
 
 	if srcKind != reflect.Ptr && dstKind == reflect.Ptr {
 		newPtr := reflect.New(dType.Elem())
-		if err := assignNestedValue(newPtr.Elem(), src, srcStructType, dstStructType, fieldPath, tagName, convertTo, depth-1); err != nil {
+		if err := assignNestedValue(newPtr.Elem(), src, srcStructType, dstStructType, fullPath, "", tagName, convertTo, depth-1); err != nil {
 			return err
 		}
 		dst.Set(newPtr)
@@ -161,7 +195,7 @@ func assignNestedValue(dst, src reflect.Value, srcStructType, dstStructType refl
 	return &MappingError{
 		SrcType:   srcStructType.String(),
 		DstType:   dstStructType.String(),
-		FieldPath: fieldPath,
+		FieldPath: fullPath,
 		Reason:    "incompatible field types: " + sType.String() + " -> " + dType.String(),
 	}
 }
