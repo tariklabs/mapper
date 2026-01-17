@@ -33,3 +33,5 @@ main.go
 
 .claude/
 CLAUDE.md
+
+*.prof
