@@ -117,14 +117,14 @@ type User struct {
 }
 
 response := APIResponse{
-    UserName:  "Bob",
-    UserEmail: "bob@example.com",
+    UserName:  "Bruno",
+    UserEmail: "bruno@example.com",
     YearsOld:  25,
 }
 var user User
 
 err := mapper.Map(&user, response)
-// user = {Name: "Bob", Email: "bob@example.com", Age: 25}
+// user = {Name: "Bruno", Email: "bruno@example.com", Age: 25}
 ```
 
 ### String-to-Type Conversion
@@ -270,12 +270,12 @@ type Destination struct {
     Name string
 }
 
-name := "Bob"
+name := "Bruno"
 src := Source{Name: &name}
 var dst Destination
 
 err := mapper.Map(&dst, src)
-// dst.Name == "Bob"
+// dst.Name == "Bruno"
 ```
 
 Nil pointers are handled gracefully and do not overwrite destination values.

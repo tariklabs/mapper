@@ -40,11 +40,11 @@
 //	    Age   int
 //	}
 //
-//	src := APIResponse{UserName: "Bob", UserEmail: "bob@example.com", YearsOld: 25}
+//	src := APIResponse{UserName: "Bruno", UserEmail: "bruno@example.com", YearsOld: 25}
 //	var dst User
 //
 //	err := mapper.Map(&dst, src)
-//	// dst = {Name: "Bob", Email: "bob@example.com", Age: 25}
+//	// dst = {Name: "Bruno", Email: "bruno@example.com", Age: 25}
 //
 // # String-to-Type Conversion
 //
