@@ -54,8 +54,8 @@ type User struct {
 
 func main() {
     dto := UserDTO{
-        FullName: "Alice Smith",
-        Email:    "alice@example.com",
+        FullName: "Rafa Smith",
+        Email:    "rafa@example.com",
         Age:      "30",
     }
 
@@ -65,7 +65,7 @@ func main() {
     }
 
     fmt.Printf("%+v\n", user)
-    // Output: {Name:Alice Smith Email:alice@example.com Age:30}
+    // Output: {Name:Rafa Smith Email:rafa@example.com Age:30}
 }
 ```
 
@@ -92,11 +92,11 @@ type Destination struct {
     Age   int
 }
 
-src := Source{Name: "Alice", Email: "alice@example.com", Age: 30}
+src := Source{Name: "Rafa", Email: "rafa@example.com", Age: 30}
 var dst Destination
 
 err := mapper.Map(&dst, src)
-// dst = {Name: "Alice", Email: "alice@example.com", Age: 30}
+// dst = {Name: "Rafa", Email: "rafa@example.com", Age: 30}
 ```
 
 ### Tag-Based Field Aliasing
@@ -194,7 +194,7 @@ type DstPerson struct {
 }
 
 src := SrcPerson{
-    Name: "Alice",
+    Name: "Rafa",
     Address: SrcAddress{
         Street: "123 Main St",
         City:   "Seattle",
@@ -253,11 +253,11 @@ type Destination struct {
     Name *string
 }
 
-src := Source{Name: "Alice"}
+src := Source{Name: "Rafa"}
 var dst Destination
 
 err := mapper.Map(&dst, src)
-// *dst.Name == "Alice"
+// *dst.Name == "Rafa"
 ```
 
 ```go
@@ -311,11 +311,11 @@ type User struct {
     Age   int
 }
 
-existing := User{Name: "Alice", Email: "alice@old.com", Age: 25}
+existing := User{Name: "Rafa", Email: "rafa@old.com", Age: 25}
 patch := User{Name: "Alicia", Email: "", Age: 0}  // Only update Name
 
 err := mapper.MapWithOptions(&existing, patch, mapper.WithIgnoreZeroSource())
-// existing = {Name: "Alicia", Email: "alice@old.com", Age: 25}
+// existing = {Name: "Alicia", Email: "rafa@old.com", Age: 25}
 ```
 
 ### WithStrictMode

@@ -23,13 +23,13 @@ package mapper
 //	    ContactEmail string
 //	}
 //
-//	src := Source{Name: "Alice", Email: "alice@example.com"}
+//	src := Source{Name: "Rafa", Email: "rafa@example.com"}
 //	var dst Destination
 //
 //	if err := mapper.Map(&dst, src); err != nil {
 //	    log.Fatal(err)
 //	}
-//	// dst.Name = "Alice", dst.ContactEmail = "alice@example.com"
+//	// dst.Name = "Rafa", dst.ContactEmail = "rafa@example.com"
 //
 // Returns a [*MappingError] if mapping fails. Common failure causes include
 // type incompatibility, nil pointers, and string conversion errors.
@@ -54,7 +54,7 @@ func Map(dst any, src any) error {
 // Example for patch operations:
 //
 //	// Only update fields that have non-zero values in the patch
-//	existing := User{Name: "Alice", Age: 30}
+//	existing := User{Name: "Rafa", Age: 30}
 //	patch := UpdateRequest{Name: "Alicia"}  // Age is zero, will be skipped
 //
 //	err := mapper.MapWithOptions(&existing, patch, mapper.WithIgnoreZeroSource())
