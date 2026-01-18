@@ -7,7 +7,7 @@ func Map(dst any, src any) error {
 func MapWithOptions(dst any, src any, opts ...Option) error {
 	cfg := defaultConfig()
 	for _, opt := range opts {
-		opt(cfg)
+		opt(&cfg)
 	}
-	return runMapping(dst, src, cfg)
+	return runMapping(dst, src, &cfg)
 }

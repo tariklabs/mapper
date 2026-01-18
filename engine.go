@@ -67,7 +67,9 @@ func runMapping(dst any, src any, cfg *config) error {
 		return err
 	}
 
-	for dstName, dstFieldMeta := range dstMeta.FieldsByName {
+	// Iterate over Fields slice for better cache locality than map iteration
+	for _, dstFieldMeta := range dstMeta.Fields {
+		dstName := dstFieldMeta.Name
 		srcFieldMeta, ok := srcMeta.FieldsByName[dstName]
 
 		if !ok {
@@ -136,6 +138,27 @@ func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPat
 	srcKind := sType.Kind()
 	dstKind := dType.Kind()
 
+	// Fast path: primitive types (not struct, slice, map, ptr)
+	// Check these first as they're the most common case
+	if srcKind != reflect.Struct && srcKind != reflect.Slice && srcKind != reflect.Map && srcKind != reflect.Ptr &&
+		dstKind != reflect.Struct && dstKind != reflect.Slice && dstKind != reflect.Map && dstKind != reflect.Ptr {
+		if sType.AssignableTo(dType) {
+			dst.Set(src)
+			return nil
+		}
+		if sType.ConvertibleTo(dType) {
+			dst.Set(src.Convert(dType))
+			return nil
+		}
+		return &MappingError{
+			SrcType:   srcType.String(),
+			DstType:   dstType.String(),
+			FieldPath: fieldPath,
+			Reason:    "incompatible field types: " + sType.String() + " -> " + dType.String(),
+		}
+	}
+
+	// Slow path: complex types requiring recursion
 	if srcKind == reflect.Struct && dstKind == reflect.Struct {
 		return assignStruct(dst, src, srcType, dstType, fieldPath, tagName, depth-1)
 	}

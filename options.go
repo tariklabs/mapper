@@ -11,8 +11,10 @@ type config struct {
 	maxDepth         int
 }
 
-func defaultConfig() *config {
-	return &config{
+// defaultConfig returns default configuration values.
+// Returns a value (not pointer) to enable stack allocation in the caller.
+func defaultConfig() config {
+	return config{
 		tagName:          "map",
 		ignoreZeroSource: false,
 		strictMode:       false,

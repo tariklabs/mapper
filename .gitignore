@@ -29,7 +29,8 @@ go.work.sum
 .vscode/
 
 # Extra
-main.go
-
 .claude/
 CLAUDE.md
+
+*.prof
+*.txt

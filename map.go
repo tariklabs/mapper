@@ -1,9 +1,51 @@
 package mapper
 
 import (
-	"fmt"
 	"reflect"
+	"strconv"
 )
+
+// buildMapPath constructs a field path with map key notation.
+// Only called when an error occurs to avoid allocation in the hot path.
+func buildMapPath(basePath string, key reflect.Value) string {
+	keyStr := formatMapKey(key)
+	// Pre-allocate buffer: basePath + "[" + keyStr + "]"
+	buf := make([]byte, 0, len(basePath)+len(keyStr)+2)
+	buf = append(buf, basePath...)
+	buf = append(buf, '[')
+	buf = append(buf, keyStr...)
+	buf = append(buf, ']')
+	return string(buf)
+}
+
+// formatMapKey converts a map key to string representation efficiently.
+func formatMapKey(key reflect.Value) string {
+	switch key.Kind() {
+	case reflect.String:
+		return key.String()
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return strconv.FormatInt(key.Int(), 10)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return strconv.FormatUint(key.Uint(), 10)
+	default:
+		// Fallback for other types - this is rare
+		return "<key>"
+	}
+}
+
+// prependMapKeyPath prepends the map key path to a MappingError's FieldPath.
+// This is called only when an error occurs, making path building lazy.
+func prependMapKeyPath(err error, basePath string, key reflect.Value) error {
+	if me, ok := err.(*MappingError); ok {
+		keyPath := buildMapPath(basePath, key)
+		if me.FieldPath != "" {
+			me.FieldPath = keyPath + "." + me.FieldPath
+		} else {
+			me.FieldPath = keyPath
+		}
+	}
+	return err
+}
 
 // assignMap handles map assignment with proper deep copying and type conversion.
 // It ensures that:
@@ -82,32 +124,37 @@ func assignMap(dst, src reflect.Value, srcStructType, dstStructType reflect.Type
 		}
 
 		var dstVal reflect.Value
+		var err error
 
 		if !needsProcessing && valuesAssignable {
 			dstVal = srcVal
 		} else if valuesAreStructs {
 			dstVal = reflect.New(dstValType).Elem()
-			valPath := fieldPath + "[" + fmt.Sprint(srcKey.Interface()) + "]"
-			if err := assignStruct(dstVal, srcVal, srcStructType, dstStructType, valPath, tagName, depth-1); err != nil {
-				return err
+			// Pass empty path; path is built only on error (lazy)
+			err = assignStruct(dstVal, srcVal, srcStructType, dstStructType, "", tagName, depth-1)
+			if err != nil {
+				return prependMapKeyPath(err, fieldPath, srcKey)
 			}
 		} else if valuesAreNestedMaps {
 			dstVal = reflect.New(dstValType).Elem()
-			valPath := fieldPath + "[" + fmt.Sprint(srcKey.Interface()) + "]"
-			if err := assignMap(dstVal, srcVal, srcStructType, dstStructType, valPath, tagName, depth-1); err != nil {
-				return err
+			// Pass empty path; path is built only on error (lazy)
+			err = assignMap(dstVal, srcVal, srcStructType, dstStructType, "", tagName, depth-1)
+			if err != nil {
+				return prependMapKeyPath(err, fieldPath, srcKey)
 			}
 		} else if valuesAreNestedSlices {
 			dstVal = reflect.New(dstValType).Elem()
-			valPath := fieldPath + "[" + fmt.Sprint(srcKey.Interface()) + "]"
-			if err := assignSlice(dstVal, srcVal, srcStructType, dstStructType, valPath, tagName, depth-1); err != nil {
-				return err
+			// Pass empty path; path is built only on error (lazy)
+			err = assignSlice(dstVal, srcVal, srcStructType, dstStructType, "", tagName, depth-1)
+			if err != nil {
+				return prependMapKeyPath(err, fieldPath, srcKey)
 			}
 		} else if valuesArePtrs {
 			dstVal = reflect.New(dstValType).Elem()
-			valPath := fieldPath + "[" + fmt.Sprint(srcKey.Interface()) + "]"
-			if err := assignPointerElement(dstVal, srcVal, srcStructType, dstStructType, valPath, tagName, depth-1); err != nil {
-				return err
+			// Pass empty path; path is built only on error (lazy)
+			err = assignPointerElement(dstVal, srcVal, srcStructType, dstStructType, "", tagName, depth-1)
+			if err != nil {
+				return prependMapKeyPath(err, fieldPath, srcKey)
 			}
 		} else if valuesConvertible {
 			dstVal = srcVal.Convert(dstValType)
