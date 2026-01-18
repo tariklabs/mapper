@@ -1,6 +1,8 @@
 package mapper
 
-import "reflect"
+import (
+	"reflect"
+)
 
 func runMapping(dst any, src any, cfg *config) error {
 	if dst == nil || src == nil {
@@ -65,7 +67,9 @@ func runMapping(dst any, src any, cfg *config) error {
 		return err
 	}
 
-	for dstName, dstFieldMeta := range dstMeta.FieldsByName {
+	// Iterate over Fields slice for better cache locality than map iteration
+	for _, dstFieldMeta := range dstMeta.Fields {
+		dstName := dstFieldMeta.Name
 		srcFieldMeta, ok := srcMeta.FieldsByName[dstName]
 
 		if !ok {
@@ -91,7 +95,7 @@ func runMapping(dst any, src any, cfg *config) error {
 			continue
 		}
 
-		if err := assignValue(dstField, srcField, srcType, dstType, dstName); err != nil {
+		if err := assignValue(dstField, srcField, srcType, dstType, dstName, srcFieldMeta.ConvertTo, cfg.tagName, cfg.maxDepth); err != nil {
 			return err
 		}
 	}
@@ -100,7 +104,16 @@ func runMapping(dst any, src any, cfg *config) error {
 }
 
 // assignValue tries to assign src to dst, handling basic cases and pointer/value combinations.
-func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPath string) error {
+func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPath string, convertTo string, tagName string, depth int) error {
+	if depth <= 0 {
+		return &MappingError{
+			SrcType:   srcType.String(),
+			DstType:   dstType.String(),
+			FieldPath: fieldPath,
+			Reason:    "maximum nesting depth exceeded (possible circular reference)",
+		}
+	}
+
 	if !dst.CanSet() {
 		return &MappingError{
 			SrcType:   srcType.String(),
@@ -113,34 +126,101 @@ func assignValue(dst, src reflect.Value, srcType, dstType reflect.Type, fieldPat
 	sType := src.Type()
 	dType := dst.Type()
 
-	// Exact or assignable type.
+	if convertTo != "" && sType.Kind() == reflect.String {
+		converted, err := convertString(src.String(), convertTo, srcType, dstType, fieldPath)
+		if err != nil {
+			return err
+		}
+		dst.Set(converted.Convert(dType))
+		return nil
+	}
+
+	srcKind := sType.Kind()
+	dstKind := dType.Kind()
+
+	// Fast path: primitive types (not struct, slice, map, ptr)
+	// Check these first as they're the most common case
+	if srcKind != reflect.Struct && srcKind != reflect.Slice && srcKind != reflect.Map && srcKind != reflect.Ptr &&
+		dstKind != reflect.Struct && dstKind != reflect.Slice && dstKind != reflect.Map && dstKind != reflect.Ptr {
+		if sType.AssignableTo(dType) {
+			dst.Set(src)
+			return nil
+		}
+		if sType.ConvertibleTo(dType) {
+			dst.Set(src.Convert(dType))
+			return nil
+		}
+		return &MappingError{
+			SrcType:   srcType.String(),
+			DstType:   dstType.String(),
+			FieldPath: fieldPath,
+			Reason:    "incompatible field types: " + sType.String() + " -> " + dType.String(),
+		}
+	}
+
+	// Slow path: complex types requiring recursion
+	if srcKind == reflect.Struct && dstKind == reflect.Struct {
+		return assignStruct(dst, src, srcType, dstType, fieldPath, tagName, depth-1)
+	}
+
+	if srcKind == reflect.Slice && dstKind == reflect.Slice {
+		return assignSlice(dst, src, srcType, dstType, fieldPath, tagName, depth-1)
+	}
+
+	if srcKind == reflect.Map && dstKind == reflect.Map {
+		return assignMap(dst, src, srcType, dstType, fieldPath, tagName, depth-1)
+	}
+
+	if srcKind == reflect.Ptr && dstKind == reflect.Ptr {
+		if src.IsNil() {
+			dst.Set(reflect.Zero(dType))
+			return nil
+		}
+
+		srcElemType := sType.Elem()
+		dstElemType := dType.Elem()
+
+		if srcElemType == dstElemType {
+			elemKind := srcElemType.Kind()
+			if elemKind != reflect.Struct && elemKind != reflect.Slice && elemKind != reflect.Map && elemKind != reflect.Ptr {
+				newPtr := reflect.New(dstElemType)
+				newPtr.Elem().Set(src.Elem())
+				dst.Set(newPtr)
+				return nil
+			}
+		}
+
+		newPtr := reflect.New(dstElemType)
+		if err := assignValue(newPtr.Elem(), src.Elem(), srcType, dstType, fieldPath, convertTo, tagName, depth-1); err != nil {
+			return err
+		}
+		dst.Set(newPtr)
+		return nil
+	}
+
+	if srcKind == reflect.Ptr && dstKind != reflect.Ptr {
+		if src.IsNil() {
+			return nil
+		}
+		return assignValue(dst, src.Elem(), srcType, dstType, fieldPath, convertTo, tagName, depth-1)
+	}
+
+	if srcKind != reflect.Ptr && dstKind == reflect.Ptr {
+		newVal := reflect.New(dType.Elem())
+		if err := assignValue(newVal.Elem(), src, srcType, dstType, fieldPath, convertTo, tagName, depth-1); err != nil {
+			return err
+		}
+		dst.Set(newVal)
+		return nil
+	}
+
 	if sType.AssignableTo(dType) {
 		dst.Set(src)
 		return nil
 	}
 
-	// Convertible types.
 	if sType.ConvertibleTo(dType) {
 		dst.Set(src.Convert(dType))
-		return nil
-	}
-
-	// Pointer -> value.
-	if sType.Kind() == reflect.Ptr && dType.Kind() != reflect.Ptr {
-		if src.IsNil() {
-			return nil // nothing to assign
-		}
-		return assignValue(dst, src.Elem(), srcType, dstType, fieldPath)
-	}
-
-	// Value -> pointer.
-	if sType.Kind() != reflect.Ptr && dType.Kind() == reflect.Ptr {
-		// Allocate new value for pointer.
-		newVal := reflect.New(dType.Elem())
-		if err := assignValue(newVal.Elem(), src, srcType, dstType, fieldPath); err != nil {
-			return err
-		}
-		dst.Set(newVal)
 		return nil
 	}
 

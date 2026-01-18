@@ -6,24 +6,27 @@ import (
 )
 
 type fieldMeta struct {
-	Name  string
-	Index []int
-	Type  reflect.Type
-	Tag   string
+	Name      string
+	Index     []int
+	Type      reflect.Type
+	Tag       string
+	ConvertTo string
 }
 
 type structMeta struct {
 	Type         reflect.Type
-	FieldsByName map[string]fieldMeta
-	FieldsByTag  map[string]fieldMeta
+	Fields       []*fieldMeta          // Slice for iteration (better cache locality)
+	FieldsByName map[string]*fieldMeta // Map for name lookup
+	FieldsByTag  map[string]*fieldMeta // Map for tag lookup
+	HasComposite bool
 }
 
-type metaCacheKey struct {
-	Type    reflect.Type
-	TagName string
+type cacheKey struct {
+	typ     reflect.Type
+	tagName string
 }
 
-var metaCache sync.Map // map[metaCacheKey]*structMeta
+var structMetaCache sync.Map // map[cacheKey]*structMeta
 
 func getStructMeta(t reflect.Type, tagName string) (*structMeta, error) {
 	if t.Kind() != reflect.Struct {
@@ -35,32 +38,52 @@ func getStructMeta(t reflect.Type, tagName string) (*structMeta, error) {
 		}
 	}
 
-	key := metaCacheKey{Type: t, TagName: tagName}
-	if v, ok := metaCache.Load(key); ok {
-		return v.(*structMeta), nil
+	key := cacheKey{typ: t, tagName: tagName}
+
+	if cached, ok := structMetaCache.Load(key); ok {
+		return cached.(*structMeta), nil
 	}
+
+	m := buildStructMeta(t, tagName)
+
+	actual, _ := structMetaCache.LoadOrStore(key, m)
+	return actual.(*structMeta), nil
+}
+
+func buildStructMeta(t reflect.Type, tagName string) *structMeta {
+	numFields := t.NumField()
 
 	m := &structMeta{
 		Type:         t,
-		FieldsByName: make(map[string]fieldMeta),
-		FieldsByTag:  make(map[string]fieldMeta),
+		Fields:       make([]*fieldMeta, 0, numFields),
+		FieldsByName: make(map[string]*fieldMeta, numFields),
+		FieldsByTag:  make(map[string]*fieldMeta, numFields),
+		HasComposite: false,
 	}
 
-	numFields := t.NumField()
 	for i := 0; i < numFields; i++ {
 		sf := t.Field(i)
 
-		// Skip unexported fields.
 		if !sf.IsExported() {
 			continue
 		}
 
-		meta := fieldMeta{
+		switch sf.Type.Kind() {
+		case reflect.Slice, reflect.Map, reflect.Ptr, reflect.Struct:
+			m.HasComposite = true
+		}
+
+		meta := &fieldMeta{
 			Name:  sf.Name,
 			Index: sf.Index,
 			Type:  sf.Type,
 		}
 
+		if convTag := sf.Tag.Get("mapconv"); convTag != "" {
+			meta.ConvertTo = convTag
+		}
+
+		m.Fields = append(m.Fields, meta)
 		m.FieldsByName[sf.Name] = meta
 
 		if tagName != "" {
@@ -71,6 +94,5 @@ func getStructMeta(t reflect.Type, tagName string) (*structMeta, error) {
 		}
 	}
 
-	metaCache.Store(key, m)
-	return m, nil
+	return m
 }
