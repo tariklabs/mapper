@@ -18,11 +18,11 @@
 //	    Age   int
 //	}
 //
-//	src := Source{Name: "Alice", Email: "alice@example.com", Age: 30}
+//	src := Source{Name: "Rafa", Email: "rafa@example.com", Age: 30}
 //	var dst Destination
 //
 //	err := mapper.Map(&dst, src)
-//	// dst = {Name: "Alice", Email: "alice@example.com", Age: 30}
+//	// dst = {Name: "Rafa", Email: "rafa@example.com", Age: 30}
 //
 // # Tag-Based Field Aliasing
 //
@@ -102,7 +102,7 @@
 //	}
 //
 //	src := SrcPerson{
-//	    Name: "Alice",
+//	    Name: "Rafa",
 //	    Address: SrcAddress{Street: "123 Main St", City: "Seattle"},
 //	}
 //	var dst DstPerson
@@ -155,11 +155,11 @@
 //	    Name *string  // pointer
 //	}
 //
-//	src := Source{Name: "Alice"}
+//	src := Source{Name: "Rafa"}
 //	var dst Destination
 //
 //	err := mapper.Map(&dst, src)
-//	// *dst.Name == "Alice"
+//	// *dst.Name == "Rafa"
 //
 // Nil pointers are handled gracefully and do not overwrite destination values.
 //
@@ -191,11 +191,11 @@
 // Use [WithIgnoreZeroSource] for partial updates where only non-zero values
 // should be applied:
 //
-//	existing := User{Name: "Alice", Email: "alice@old.com", Age: 25}
+//	existing := User{Name: "Rafa", Email: "rafa@old.com", Age: 25}
 //	patch := PatchRequest{Name: "Alicia", Email: "", Age: 0}  // Only update name
 //
 //	err := mapper.MapWithOptions(&existing, patch, mapper.WithIgnoreZeroSource())
-//	// existing = {Name: "Alicia", Email: "alice@old.com", Age: 25}
+//	// existing = {Name: "Alicia", Email: "rafa@old.com", Age: 25}
 //
 // # Error Handling
 //

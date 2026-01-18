@@ -74,11 +74,11 @@ func WithTagName(tag string) Option {
 //	    Age   int
 //	}
 //
-//	existing := User{Name: "Alice", Email: "alice@old.com", Age: 25}
+//	existing := User{Name: "Rafa", Email: "rafa@old.com", Age: 25}
 //	patch := User{Name: "Alicia", Email: "", Age: 0}  // Only Name should update
 //
 //	err := mapper.MapWithOptions(&existing, patch, mapper.WithIgnoreZeroSource())
-//	// existing = {Name: "Alicia", Email: "alice@old.com", Age: 25}
+//	// existing = {Name: "Alicia", Email: "rafa@old.com", Age: 25}
 //
 // Without this option, the empty string and zero would overwrite the existing values.
 func WithIgnoreZeroSource() Option {
